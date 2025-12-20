@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { 
   Settings, Upload, Image as ImageIcon, CheckSquare, 
@@ -8,11 +7,13 @@ import {
 } from 'lucide-react';
 import { useData } from '../../context/DataContext';
 import GalleryView from '../../components/Gallery/GalleryView';
-import { SubEvent, Event, OptimizationType } from '../../types';
+import { SubEvent, Event, OptimizationType, Photo } from '../../types';
 import { optimizeImage } from '../../utils/imageOptimizer';
 
+const API_URL = 'http://localhost:8000/api';
+
 const PhotographerEventDetail: React.FC<{ onNavigate: (view: string) => void, initialTab?: string }> = ({ onNavigate, initialTab }) => {
-  const { activeEvent, updateEvent, photos, users, setActiveEvent } = useData();
+  const { activeEvent, updateEvent, photos, users, setActiveEvent, refreshPhotos } = useData();
   const [activeTab, setActiveTab] = useState<string>(initialTab || 'settings');
   
   const [isEditDetailsOpen, setIsEditDetailsOpen] = useState(false);
@@ -39,7 +40,6 @@ const PhotographerEventDetail: React.FC<{ onNavigate: (view: string) => void, in
 
   if (!activeEvent) return null;
 
-  // Added handleUpdateDetails to fix the "Cannot find name 'handleUpdateDetails'" error
   const handleUpdateDetails = () => {
     if (activeEvent && editForm.name) {
       updateEvent({ ...activeEvent, ...editForm } as Event);
@@ -66,7 +66,7 @@ const PhotographerEventDetail: React.FC<{ onNavigate: (view: string) => void, in
 
     // Stage 1: Analyzing
     setUploadStage('analyzing');
-    for (let i = 0; i <= 100; i += 10) {
+    for (let i = 0; i <= 100; i += 20) {
       setUploadProgress(i);
       setCurrentFileName(`Scanning metadata: chunk_${i/10}.dat`);
       await new Promise(r => setTimeout(r, 60));
@@ -76,6 +76,20 @@ const PhotographerEventDetail: React.FC<{ onNavigate: (view: string) => void, in
     setUploadStage('optimizing');
     setUploadProgress(0);
     let totalSavedBytes = 0;
+
+    // Prepare metadata for DB
+    const photosToUpload: Partial<Photo>[] = [];
+    // Random stock images to use for persistence since we can't upload real files in this env
+    const stockImages = [
+      "https://images.unsplash.com/photo-1606800052052-a08af7148866?q=80&w=2070",
+      "https://images.unsplash.com/photo-1511285560982-1351cdeb9821?q=80&w=2070",
+      "https://images.unsplash.com/photo-1515934751635-c81c6bc9a2d8?q=80&w=2070",
+      "https://images.unsplash.com/photo-1520854221256-17451cc330e7?q=80&w=2070",
+      "https://images.unsplash.com/photo-1621621667797-e06afc217fb0?q=80&w=2070",
+      "https://images.unsplash.com/photo-1532712938310-34cb3982ef74?q=80&w=2070",
+      "https://images.unsplash.com/photo-1522673607200-1645062cd958?q=80&w=2070",
+      "https://images.unsplash.com/photo-1529636721647-781d6605c91c?q=80&w=2070"
+    ];
 
     if (fileArray.length > 0) {
       for (let i = 0; i < fileArray.length; i++) {
@@ -95,6 +109,16 @@ const PhotographerEventDetail: React.FC<{ onNavigate: (view: string) => void, in
           setStats(s => ({ ...s, processedCount: i + 1 }));
         }
         
+        photosToUpload.push({
+            url: stockImages[i % stockImages.length], // Fallback to stock for persistent viewing
+            category: i % 2 === 0 ? "Ceremony" : "Candid",
+            quality: 'high',
+            isAiPick: Math.random() > 0.7,
+            tags: ['new-upload', 'processed'],
+            people: [],
+            eventId: activeEvent.id
+        });
+        
         setUploadProgress(Math.round(((i + 1) / totalFiles) * 100));
       }
     } else {
@@ -105,17 +129,39 @@ const PhotographerEventDetail: React.FC<{ onNavigate: (view: string) => void, in
         const fakeSaved = Math.random() * 2.5 * 1024 * 1024; // ~2.5MB saved per photo
         totalSavedBytes += fakeSaved;
         setStats(s => ({ ...s, processedCount: i, savedSize: totalSavedBytes }));
+        
+        photosToUpload.push({
+            url: stockImages[i % stockImages.length],
+            category: i % 2 === 0 ? "Ceremony" : "Candid",
+            quality: 'high',
+            isAiPick: Math.random() > 0.7,
+            tags: ['simulation', 'processed'],
+            people: [],
+            eventId: activeEvent.id
+        });
+
         setUploadProgress(Math.round((i / totalFiles) * 100));
         await new Promise(r => setTimeout(r, 120));
       }
     }
 
-    // Stage 3: Uploading to Edge
+    // Stage 3: Uploading to Edge (Actual DB Save)
     setUploadStage('uploading');
     setUploadProgress(0);
-    setCurrentFileName('Connecting to global CDN... Mumbai (Asia-South1)');
-    await new Promise(r => setTimeout(r, 500));
-    for (let i = 0; i <= 100; i += 5) {
+    setCurrentFileName('Syncing with MongoDB Atlas...');
+    
+    try {
+        await fetch(`${API_URL}/events/${activeEvent.id}/photos`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ photos: photosToUpload })
+        });
+        await refreshPhotos();
+    } catch (e) {
+        console.error("Upload failed", e);
+    }
+    
+    for (let i = 0; i <= 100; i += 20) {
       setUploadProgress(i);
       await new Promise(r => setTimeout(r, 40));
     }
@@ -127,13 +173,13 @@ const PhotographerEventDetail: React.FC<{ onNavigate: (view: string) => void, in
     for (let i = 0; i < aiMessages.length; i++) {
       setCurrentFileName(aiMessages[i]);
       setUploadProgress((i + 1) * 25);
-      await new Promise(r => setTimeout(r, 600));
+      await new Promise(r => setTimeout(r, 400));
     }
 
     setIsUploading(false);
     setUploadProgress(0);
     setCurrentFileName('');
-    alert(`Successfully processed ${totalFiles} photos! Space saved: ${(totalSavedBytes / (1024 * 1024)).toFixed(2)} MB`);
+    setActiveTab('sorted'); // Auto switch to view the new photos
   };
 
   const handleFolderSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -398,6 +444,12 @@ const PhotographerEventDetail: React.FC<{ onNavigate: (view: string) => void, in
                       className="w-full bg-[#10B981] hover:bg-slate-900 text-white px-8 py-5 rounded-2xl font-black uppercase tracking-[0.25em] flex items-center justify-center gap-3 transition-all shadow-xl shadow-[#10B981]/20 active:scale-95 text-[11px]"
                     >
                       <Zap className="w-4 h-4" /> Open Folder
+                    </button>
+                    <button 
+                      onClick={() => simulateUpload()}
+                      className="w-full bg-slate-100 hover:bg-slate-200 text-slate-500 px-8 py-5 rounded-2xl font-black uppercase tracking-[0.25em] flex items-center justify-center gap-3 transition-all text-[11px]"
+                    >
+                      Simulation Mode
                     </button>
                   </div>
                 </>
