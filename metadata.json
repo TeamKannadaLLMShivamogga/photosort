@@ -1,0 +1,7 @@
+{
+  "name": "PhotoSort Pro",
+  "description": "Professional photo management and sorting platform for photographers and clients, featuring AI-powered tagging, multi-day event organization, and selection workflows.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
