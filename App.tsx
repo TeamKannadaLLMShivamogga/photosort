@@ -13,13 +13,15 @@ import PhotographerEventDetail from './views/Photographer/EventDetail';
 import AdminDashboard from './views/Admin/Dashboard';
 import { 
   LogIn, Camera, Bell, Search, Settings, User as UserIcon, Save, 
-  Image as ImageIcon, Plus, Trash2, Upload, Heart, UserPlus, Info, Users
+  Image as ImageIcon, Plus, Trash2, Upload, Heart, UserPlus, Info, Users, Menu,
+  CreditCard, Landmark, Globe, Smartphone, Mail, ShieldCheck, Zap, ChevronRight, Lock
 } from 'lucide-react';
 
 const AppContent: React.FC = () => {
   const { currentUser, activeEvent, login, updateUser } = useData();
   const [currentView, setCurrentView] = useState('dashboard');
   const [email, setEmail] = useState('');
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   // Profile Edit States
   const [editName, setEditName] = useState('');
@@ -107,7 +109,7 @@ const AppContent: React.FC = () => {
               <input 
                 type="email" 
                 placeholder="admin@photosort.com"
-                className="w-full px-6 py-5 bg-slate-50 border border-slate-200 rounded-3xl focus:outline-none focus:ring-4 focus:ring-[#10B981]/5 focus:border-[#10B981] transition-all text-lg font-medium"
+                className="w-full px-6 py-5 bg-slate-50 border border-slate-200 rounded-3xl focus:outline-none focus:ring-4 focus:ring-[#10B981]/5 focus:border-[#10B981] transition-all text-lg font-medium text-slate-900"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
               />
@@ -166,14 +168,14 @@ const AppContent: React.FC = () => {
       case 'profile-settings': 
         return (
           <div className="max-w-4xl mx-auto space-y-10 animate-in fade-in duration-500 pb-20">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
               <div>
                 <h1 className="text-3xl font-black text-slate-900 uppercase tracking-tight">Identity & Family</h1>
                 <p className="text-[10px] text-slate-400 font-black uppercase tracking-[0.2em] mt-1">Configure your personal profile and family detection</p>
               </div>
               <button 
                 onClick={handleUpdateProfile}
-                className="bg-[#10B981] hover:bg-[#059669] text-white px-8 py-3.5 rounded-2xl font-black uppercase tracking-[0.15em] transition-all shadow-xl shadow-[#10B981]/20 text-[11px] flex items-center gap-2 active:scale-95"
+                className="w-full sm:w-auto bg-[#10B981] hover:bg-[#059669] text-white px-8 py-3.5 rounded-2xl font-black uppercase tracking-[0.15em] transition-all shadow-xl shadow-[#10B981]/20 text-[11px] flex items-center justify-center gap-2 active:scale-95"
               >
                 <Save className="w-4 h-4" /> Finalize Changes
               </button>
@@ -181,7 +183,7 @@ const AppContent: React.FC = () => {
 
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
               {/* Profile Card */}
-              <div className="lg:col-span-5 bg-white p-10 rounded-[3rem] border border-slate-100 shadow-sm space-y-10 sticky top-24">
+              <div className="lg:col-span-5 bg-white p-6 sm:p-10 rounded-[3rem] border border-slate-100 shadow-sm space-y-10 sticky top-24">
                 <div className="flex flex-col items-center gap-8">
                   <div className="relative group">
                     <img 
@@ -212,7 +214,7 @@ const AppContent: React.FC = () => {
                         type="text" 
                         value={editName}
                         onChange={(e) => setEditName(e.target.value)}
-                        className="w-full pl-14 pr-6 py-4.5 bg-slate-50 border border-slate-100 rounded-[1.5rem] text-sm font-bold outline-none focus:bg-white focus:ring-4 focus:ring-[#10B981]/5 transition-all"
+                        className="w-full pl-14 pr-6 py-4.5 bg-slate-50 border border-slate-100 rounded-[1.5rem] text-sm font-bold outline-none focus:bg-white focus:ring-4 focus:ring-[#10B981]/5 transition-all text-slate-900"
                         placeholder="e.g. Rohan Sharma"
                       />
                     </div>
@@ -222,7 +224,7 @@ const AppContent: React.FC = () => {
 
               {/* Family Members Section */}
               <div className="lg:col-span-7 space-y-8">
-                <div className="bg-white p-10 rounded-[3.5rem] border border-slate-100 shadow-sm space-y-10">
+                <div className="bg-white p-6 sm:p-10 rounded-[3.5rem] border border-slate-100 shadow-sm space-y-10">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-4">
                       <div className="w-12 h-12 bg-rose-50 rounded-2xl flex items-center justify-center text-rose-500 shadow-sm border border-rose-100">
@@ -230,7 +232,7 @@ const AppContent: React.FC = () => {
                       </div>
                       <div>
                         <h3 className="text-xl font-black text-slate-900 uppercase tracking-tight">Family Map</h3>
-                        <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest mt-1">Add reference photos for AI face detection</p>
+                        <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest mt-1">Add reference photos</p>
                       </div>
                     </div>
                     <button 
@@ -245,7 +247,7 @@ const AppContent: React.FC = () => {
                     <input type="file" ref={familyMemberInputRef} className="hidden" accept="image/*" onChange={handleFamilyPhotoUpload} />
                     {familyMembers.length > 0 ? (
                       familyMembers.map((member) => (
-                        <div key={member.id} className="p-6 bg-slate-50/50 rounded-3xl border border-slate-100 flex items-center gap-6 group hover:bg-white hover:shadow-xl hover:shadow-slate-200/50 transition-all">
+                        <div key={member.id} className="p-4 sm:p-6 bg-slate-50/50 rounded-3xl border border-slate-100 flex flex-col sm:flex-row items-center gap-6 group hover:bg-white hover:shadow-xl hover:shadow-slate-200/50 transition-all text-slate-900">
                           <div className="relative">
                             {member.referencePhoto ? (
                               <img 
@@ -265,20 +267,20 @@ const AppContent: React.FC = () => {
                               <Upload className="w-3.5 h-3.5" />
                             </button>
                           </div>
-                          <div className="flex-1 grid grid-cols-2 gap-4">
+                          <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-4 w-full">
                             <input 
                               type="text" 
                               placeholder="Name" 
                               value={member.name}
                               onChange={(e) => updateFamilyMember(member.id, { name: e.target.value })}
-                              className="bg-transparent border-b border-slate-200 py-1 text-sm font-bold focus:border-[#10B981] outline-none transition-all placeholder:text-slate-300"
+                              className="bg-transparent border-b border-slate-200 py-1 text-sm font-bold focus:border-[#10B981] outline-none transition-all placeholder:text-slate-300 text-slate-900"
                             />
                             <input 
                               type="text" 
                               placeholder="Relation" 
                               value={member.relation}
                               onChange={(e) => updateFamilyMember(member.id, { relation: e.target.value })}
-                              className="bg-transparent border-b border-slate-200 py-1 text-sm font-bold focus:border-[#10B981] outline-none transition-all placeholder:text-slate-300"
+                              className="bg-transparent border-b border-slate-200 py-1 text-sm font-bold focus:border-[#10B981] outline-none transition-all placeholder:text-slate-300 text-slate-900"
                             />
                           </div>
                           <button 
@@ -292,7 +294,6 @@ const AppContent: React.FC = () => {
                     ) : (
                       <div className="p-12 border-2 border-dashed border-slate-100 rounded-[2.5rem] flex flex-col items-center justify-center text-center gap-4">
                         <div className="w-16 h-16 bg-slate-50 rounded-3xl flex items-center justify-center text-slate-200">
-                          {/* Fixed missing import for Users icon */}
                           <Users className="w-8 h-8" />
                         </div>
                         <div className="space-y-1">
@@ -304,7 +305,7 @@ const AppContent: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="bg-indigo-50/50 p-8 rounded-[2.5rem] border border-indigo-100 flex items-start gap-5">
+                <div className="bg-indigo-50/50 p-6 rounded-[2.5rem] border border-indigo-100 flex items-start gap-5">
                   <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center text-indigo-600 shadow-sm border border-indigo-50 shrink-0">
                     <Info className="w-5 h-5" />
                   </div>
@@ -320,22 +321,174 @@ const AppContent: React.FC = () => {
           </div>
         );
       case 'photographer-settings': return (
-        <div className="p-10 bg-white rounded-[3rem] border border-slate-100 shadow-sm max-w-2xl mx-auto space-y-8">
-          <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tight flex items-center gap-3">
-            <Settings className="w-8 h-8 text-[#10B981]" /> Photographer Settings
-          </h2>
-          <div className="space-y-6">
-             <div className="p-6 bg-slate-50 rounded-3xl">
-               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Studio Identity</p>
-               <input type="text" className="w-full bg-white border border-slate-200 rounded-2xl p-4 font-black" defaultValue={currentUser.name} />
-             </div>
-             <div className="p-6 bg-slate-50 rounded-3xl">
-               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Creative Suite Connection</p>
-               <div className="flex items-center justify-between">
-                 <span className="text-xs font-bold text-slate-600">Lightroom SDK Ingest</span>
-                 <span className="px-4 py-1.5 bg-indigo-50 text-indigo-600 rounded-full text-[10px] font-black uppercase tracking-widest">Active</span>
-               </div>
-             </div>
+        <div className="max-w-6xl mx-auto space-y-10 animate-in fade-in duration-500 pb-20">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div>
+              <h1 className="text-3xl font-black text-slate-900 uppercase tracking-tight">Partner Configuration</h1>
+              <p className="text-[10px] text-slate-400 font-black uppercase tracking-[0.2em] mt-1">Manage studio profile, payouts, and platform preferences</p>
+            </div>
+            <button 
+              className="w-full sm:w-auto bg-[#10B981] hover:bg-[#059669] text-white px-8 py-3.5 rounded-2xl font-black uppercase tracking-[0.15em] transition-all shadow-xl shadow-[#10B981]/20 text-[11px] flex items-center justify-center gap-2 active:scale-95"
+              onClick={() => alert('Settings updated!')}
+            >
+              <Save className="w-4 h-4" /> Save Preferences
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+            {/* Left Column: Profile & Subscription */}
+            <div className="lg:col-span-5 space-y-8">
+              {/* Studio Summary */}
+              <div className="bg-white p-8 rounded-[3rem] border border-slate-100 shadow-sm space-y-8">
+                <div className="flex flex-col items-center text-center space-y-4">
+                  <div className="relative group">
+                    <img 
+                      src={currentUser?.avatar || `https://ui-avatars.com/api/?name=${currentUser.name}&background=10B981&color=fff&size=256`} 
+                      className="w-32 h-32 rounded-[2.5rem] border-8 border-slate-50 shadow-2xl object-cover transition-all"
+                      alt="Studio"
+                    />
+                    <button className="absolute bottom-1 right-1 w-10 h-10 bg-[#10B981] text-white rounded-xl flex items-center justify-center shadow-lg hover:bg-slate-900 transition-all">
+                      <Upload className="w-4 h-4" />
+                    </button>
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-black text-slate-900 tracking-tight uppercase">{currentUser.name}</h3>
+                    <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mt-1">PRO PARTNER SINCE 2023</p>
+                  </div>
+                </div>
+
+                <div className="space-y-4 pt-4 border-t border-slate-50">
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Studio Portfolio</label>
+                    <div className="relative">
+                      <Globe className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                      <input type="text" className="w-full pl-12 pr-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-bold text-slate-900" defaultValue="https://johndoe.studio" />
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Contact Phone</label>
+                    <div className="relative">
+                      <Smartphone className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                      <input type="text" className="w-full pl-12 pr-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-bold text-slate-900" defaultValue="+91 98765 43210" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Subscription Status */}
+              <div className="bg-slate-900 p-8 rounded-[3rem] text-white relative overflow-hidden group shadow-2xl">
+                <div className="relative z-10 space-y-6">
+                  <div className="flex items-center justify-between">
+                    <span className="px-3 py-1 bg-[#10B981] text-white text-[9px] font-black uppercase tracking-widest rounded-lg">Active Plan</span>
+                    <Zap className="w-5 h-5 text-[#10B981]" />
+                  </div>
+                  <div>
+                    <h4 className="text-3xl font-black tracking-tight">PRO STUDIO</h4>
+                    <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest mt-1">Next Renewal: June 15, 2025</p>
+                  </div>
+                  <div className="pt-4 border-t border-white/10 flex items-center justify-between">
+                     <p className="text-[10px] font-bold uppercase text-slate-400 tracking-tight">Platform Fee: 5% per transaction</p>
+                     <button className="text-[10px] font-black text-[#10B981] uppercase hover:underline">Upgrade</button>
+                  </div>
+                </div>
+                <Zap className="absolute -right-8 -bottom-8 w-40 h-40 text-white/5 group-hover:scale-110 transition-transform" />
+              </div>
+            </div>
+
+            {/* Right Column: Payments & Security */}
+            <div className="lg:col-span-7 space-y-8">
+              {/* Payment Methods */}
+              <div className="bg-white p-8 sm:p-10 rounded-[3.5rem] border border-slate-100 shadow-sm space-y-10">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 bg-indigo-50 rounded-2xl flex items-center justify-center text-indigo-600 border border-indigo-100">
+                    <CreditCard className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-black text-slate-900 uppercase tracking-tight">Payout Methods</h3>
+                    <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest mt-1">Where you receive your event earnings</p>
+                  </div>
+                </div>
+
+                <div className="space-y-6">
+                  {/* Bank Details */}
+                  <div className="p-6 bg-slate-50/50 rounded-[2.5rem] border border-slate-100 space-y-6 group hover:bg-white hover:shadow-xl transition-all">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <Landmark className="w-5 h-5 text-slate-400" />
+                        <span className="text-[11px] font-black text-slate-800 uppercase tracking-widest">Bank Account (Primary)</span>
+                      </div>
+                      <span className="px-2.5 py-1 bg-emerald-50 text-emerald-600 text-[9px] font-black uppercase rounded-lg">Verified</span>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="space-y-1">
+                        <p className="text-[9px] font-bold text-slate-400 uppercase ml-1">Account Holder</p>
+                        <input type="text" className="w-full bg-white border border-slate-100 rounded-xl p-3 text-xs font-bold text-slate-900" defaultValue="John Doe" />
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-[9px] font-bold text-slate-400 uppercase ml-1">IFSC Code</p>
+                        <input type="text" className="w-full bg-white border border-slate-100 rounded-xl p-3 text-xs font-bold uppercase text-slate-900" defaultValue="HDFC0001234" />
+                      </div>
+                      <div className="sm:col-span-2 space-y-1">
+                        <p className="text-[9px] font-bold text-slate-400 uppercase ml-1">Account Number</p>
+                        <input type="text" className="w-full bg-white border border-slate-100 rounded-xl p-3 text-xs font-bold text-slate-900" defaultValue="50100234567891" />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* UPI Details */}
+                  <div className="p-6 bg-slate-50/50 rounded-[2.5rem] border border-slate-100 space-y-4 group hover:bg-white hover:shadow-xl transition-all">
+                    <div className="flex items-center gap-3">
+                      <Smartphone className="w-5 h-5 text-slate-400" />
+                      <span className="text-[11px] font-black text-slate-800 uppercase tracking-widest">UPI Identity</span>
+                    </div>
+                    <div className="relative">
+                      <input type="text" className="w-full bg-white border border-slate-100 rounded-xl p-4 text-xs font-bold text-slate-900" defaultValue="johndoe@hdfcbank" />
+                      <button className="absolute right-3 top-1/2 -translate-y-1/2 px-4 py-1.5 bg-slate-900 text-white text-[9px] font-black uppercase rounded-lg hover:bg-black">Update</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Preferences & Security */}
+              <div className="bg-white p-8 sm:p-10 rounded-[3.5rem] border border-slate-100 shadow-sm space-y-10">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 bg-amber-50 rounded-2xl flex items-center justify-center text-amber-600 border border-amber-100">
+                    <ShieldCheck className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-black text-slate-900 uppercase tracking-tight">Access & Notifications</h3>
+                    <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest mt-1">Secure your studio and stay updated</p>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between p-6 bg-slate-50 rounded-3xl border border-slate-100">
+                    <div className="flex items-center gap-4">
+                      <Mail className="w-5 h-5 text-slate-400" />
+                      <div>
+                        <p className="text-xs font-bold text-slate-800 uppercase">Selection Alerts</p>
+                        <p className="text-[9px] text-slate-400 font-medium">Get notified when clients finish picking photos</p>
+                      </div>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input type="checkbox" defaultChecked className="sr-only peer" />
+                      <div className="w-10 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#10B981]"></div>
+                    </label>
+                  </div>
+
+                  <div className="flex items-center justify-between p-6 bg-slate-50 rounded-3xl border border-slate-100">
+                    <div className="flex items-center gap-4">
+                      <Lock className="w-5 h-5 text-slate-400" />
+                      <div>
+                        <p className="text-xs font-bold text-slate-800 uppercase">Two-Factor Auth</p>
+                        <p className="text-[9px] text-slate-400 font-medium">Added security layer for financial operations</p>
+                      </div>
+                    </div>
+                    <button className="text-[10px] font-black text-[#10B981] uppercase hover:underline">Enable</button>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       );
@@ -346,45 +499,56 @@ const AppContent: React.FC = () => {
 
   return (
     <div className="flex min-h-screen bg-slate-50">
-      <Sidebar onNavigate={setCurrentView} currentView={currentView} />
-      <main className="flex-1 ml-60 flex flex-col min-h-screen">
-        <header className="h-16 bg-white border-b border-slate-100 flex items-center justify-between px-10 sticky top-0 z-10 shadow-sm">
+      <Sidebar 
+        onNavigate={setCurrentView} 
+        currentView={currentView} 
+        isOpen={isSidebarOpen} 
+        onClose={() => setIsSidebarOpen(false)} 
+      />
+      <main className="flex-1 lg:ml-64 flex flex-col min-h-screen transition-all duration-300">
+        <header className="h-16 bg-white border-b border-slate-100 flex items-center justify-between px-4 sm:px-10 sticky top-0 z-30 shadow-sm">
           <div className="flex items-center gap-3">
-            <div className="hidden md:flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
+            <button 
+              onClick={() => setIsSidebarOpen(true)}
+              className="lg:hidden p-2 text-slate-500 hover:text-slate-900 transition-colors"
+            >
+              <Menu className="w-6 h-6" />
+            </button>
+            <div className="hidden sm:flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
               <span className="opacity-50">Home</span>
               <span className="text-slate-200">/</span>
-              <span className="text-slate-900">{currentView.replace(/admin-|photographer-|profile-/g, '').replace(/-/g, ' ')}</span>
+              <span className="text-slate-900">{currentView.replace(/admin-|photographer-|profile-|governance/g, '').replace(/-/g, ' ')}</span>
             </div>
           </div>
 
-          <div className="flex items-center gap-8">
+          <div className="flex items-center gap-4 sm:gap-8">
              <div className="relative hidden md:block">
                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
                <input 
                  type="text" 
                  placeholder="Search platform..." 
-                 className="bg-slate-50 border border-slate-100 rounded-full py-2 pl-10 pr-6 text-xs font-bold focus:ring-2 focus:ring-[#10B981]/10 w-48 outline-none transition-all" 
+                 className="bg-slate-50 border border-slate-100 rounded-full py-2 pl-10 pr-6 text-xs font-bold focus:ring-2 focus:ring-[#10B981]/10 w-32 lg:w-48 outline-none transition-all text-slate-900" 
                />
              </div>
              <button className="p-2 text-slate-400 hover:text-[#10B981] transition-colors relative bg-slate-50 rounded-full">
                 <Bell className="w-4 h-4" />
                 <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-[#10B981] rounded-full border-2 border-white"></span>
              </button>
-             <div className="flex items-center gap-3 border-l border-slate-100 pl-8 cursor-pointer group" onClick={() => setCurrentView('profile-settings')}>
-                <div className="text-right">
+             <div className="flex items-center gap-2 sm:gap-3 border-l border-slate-100 pl-4 sm:pl-8 cursor-pointer group" onClick={() => setCurrentView('profile-settings')}>
+                <div className="text-right hidden xs:block">
                   <p className="text-[10px] font-black text-slate-900 uppercase tracking-tight leading-none group-hover:text-[#10B981] transition-colors">{currentUser.name}</p>
                   <p className="text-[8px] text-[#10B981] font-black uppercase tracking-widest mt-0.5">{currentUser.role}</p>
                 </div>
                 <img 
                   src={currentUser?.avatar || `https://ui-avatars.com/api/?name=${currentUser?.name}&background=10B981&color=fff`} 
-                  className="w-9 h-9 rounded-2xl border-2 border-slate-50 shadow-sm object-cover group-hover:border-[#10B981] transition-colors"
+                  className="w-8 h-8 sm:w-9 sm:h-9 rounded-2xl border-2 border-slate-50 shadow-sm object-cover group-hover:border-[#10B981] transition-colors"
                   alt="" 
                 />
              </div>
           </div>
         </header>
 
-        <div className="flex-1 p-10 overflow-y-auto no-scrollbar">
+        <div className="flex-1 p-4 sm:p-10 overflow-y-auto no-scrollbar">
           {renderContent()}
         </div>
       </main>

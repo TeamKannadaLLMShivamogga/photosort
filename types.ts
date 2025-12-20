@@ -11,6 +11,12 @@ export enum SubscriptionTier {
   STUDIO = 'STUDIO'
 }
 
+export enum EventPlan {
+  BASIC = 'BASIC',
+  STANDARD = 'STANDARD',
+  PRO = 'PRO'
+}
+
 export type OptimizationType = 'none' | 'balanced' | 'performance' | 'high-quality';
 
 export interface FamilyMember {
@@ -75,6 +81,8 @@ export interface Event {
   optimizationSetting?: OptimizationType;
   clientEmail?: string;
   clientPhone?: string;
+  plan?: EventPlan;
+  serviceFee?: number;
 }
 
 export interface Notification {
