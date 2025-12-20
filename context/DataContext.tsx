@@ -1,6 +1,7 @@
-
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { User, UserRole, Event, Photo, Notification, SubEvent, SubscriptionTier } from '../types';
+
+const API_URL = 'http://localhost:8000/api';
 
 interface DataContextType {
   currentUser: User | null;
@@ -37,112 +38,59 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [activeEvent, setActiveEvent] = useState<Event | null>(null);
   const [selectedPhotos, setSelectedPhotos] = useState<Set<string>>(new Set());
 
+  // Fetch Initial Data
   useEffect(() => {
-    const mockUsers: User[] = [
-      { id: 'a1', email: 'admin@photosort.com', name: 'System Admin', role: UserRole.ADMIN, isActive: true },
-      { 
-        id: 'p1', 
-        email: 'photographer@photosort.com', 
-        name: 'John Doe Photography', 
-        role: UserRole.PHOTOGRAPHER, 
-        isActive: true,
-        subscriptionTier: SubscriptionTier.PRO,
-        subscriptionExpiry: '2025-12-31',
-        joinDate: '2023-01-15',
-        totalEventsCount: 42,
-        totalPhotosCount: 15400,
-        totalUsersCount: 120
-      },
-      { 
-        id: 'p2', 
-        email: 'studio@lens.com', 
-        name: 'Creative Lens Studio', 
-        role: UserRole.PHOTOGRAPHER, 
-        isActive: false,
-        subscriptionTier: SubscriptionTier.STUDIO,
-        subscriptionExpiry: '2024-05-20',
-        joinDate: '2023-06-10',
-        totalEventsCount: 89,
-        totalPhotosCount: 45000,
-        totalUsersCount: 340
-      },
-      { id: 'u1', email: 'user@photosort.com', name: 'Rohan Sharma', role: UserRole.USER, isActive: true },
-      { id: 'u2', email: 'priya@example.com', name: 'Priya Kapoor', role: UserRole.USER, isActive: true },
-    ];
-
-    const mockEvents: Event[] = [
-      {
-        id: 'e1',
-        name: 'Sharma & Kapoor Wedding',
-        date: '2024-05-15',
-        photographerId: 'p1',
-        coverImage: 'https://picsum.photos/seed/wedding1/800/400',
-        photoCount: 1250,
-        assignedUsers: ['u1', 'u2'],
-        status: 'active',
-        subEvents: [
-          { id: 'se1', name: 'Mehendi', date: '2024-05-13' },
-          { id: 'se2', name: 'Sangeet', date: '2024-05-14' },
-          { id: 'se3', name: 'Wedding Ceremony', date: '2024-05-15' }
-        ],
-        price: 250000,
-        paidAmount: 150000,
-        paymentStatus: 'partial',
-        deadline: '2024-06-01',
-        optimizationSetting: 'balanced'
-      },
-      {
-        id: 'e2',
-        name: 'Aaryan Birthday Bash',
-        date: '2024-06-10',
-        photographerId: 'p1',
-        coverImage: 'https://picsum.photos/seed/birthday/800/400',
-        photoCount: 450,
-        assignedUsers: ['u1'],
-        status: 'active',
-        subEvents: [{ id: 'se4', name: 'Main Party', date: '2024-06-10' }],
-        price: 75000,
-        paidAmount: 75000,
-        paymentStatus: 'paid'
+    const fetchData = async () => {
+      try {
+        const [usersRes, eventsRes] = await Promise.all([
+          fetch(`${API_URL}/users`),
+          fetch(`${API_URL}/events`)
+        ]);
+        const usersData = await usersRes.json();
+        const eventsData = await eventsRes.json();
+        setUsers(usersData);
+        setEvents(eventsData);
+      } catch (error) {
+        console.error("Failed to fetch backend data. Ensure backend is running.", error);
       }
-    ];
-
-    const mockPhotos: Photo[] = Array.from({ length: 100 }).map((_, i) => ({
-      id: `ph${i}`,
-      url: `https://picsum.photos/seed/photo${i}/600/600`,
-      eventId: i < 70 ? 'e1' : 'e2',
-      tags: i % 3 === 0 ? ['Ceremony', 'Portraits'] : ['Candid', 'Family'],
-      people: i % 4 === 0 ? ['Emma', 'James'] : i % 2 === 0 ? ['Sarah'] : ['John', 'Priya'],
-      isAiPick: i % 10 === 0,
-      quality: i % 5 === 0 ? 'high' : i % 3 === 0 ? 'medium' : 'low',
-      category: i % 3 === 0 ? 'Decoration' : i % 2 === 0 ? 'Guests' : 'Action',
-      subEventId: i < 20 ? 'se1' : i < 40 ? 'se2' : i < 70 ? 'se3' : 'se4'
-    }));
-
-    setUsers(mockUsers);
-    setEvents(mockEvents);
-    setPhotos(mockPhotos);
+    };
+    fetchData();
   }, []);
 
-  const login = (email: string) => {
-    const user = users.find(u => u.email === email);
-    if (user) {
-      if (user.isActive === false && user.role === UserRole.PHOTOGRAPHER) {
-        alert("Your account has been disabled by the administrator. Please contact support.");
-        return;
-      }
-      setCurrentUser(user);
+  // Fetch photos when active event changes
+  useEffect(() => {
+    if (activeEvent?.id) {
+      fetch(`${API_URL}/events/${activeEvent.id}/photos`)
+        .then(res => res.json())
+        .then((data: Photo[]) => {
+          setPhotos(data);
+          // Sync selected photos
+          const selected = new Set(data.filter((p) => p.isSelected).map((p) => p.id));
+          setSelectedPhotos(selected);
+        })
+        .catch(err => console.error("Failed to load photos", err));
     } else {
-      const newUser: User = { 
-        id: Date.now().toString(), 
-        email, 
-        name: email.split('@')[0], 
-        role: UserRole.USER, 
-        isActive: true,
-        joinDate: new Date().toISOString().split('T')[0]
-      };
-      setUsers(prev => [...prev, newUser]);
-      setCurrentUser(newUser);
+      setPhotos([]);
+    }
+  }, [activeEvent?.id]);
+
+  const login = async (email: string) => {
+    try {
+      const res = await fetch(`${API_URL}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email })
+      });
+      const user = await res.json();
+      if (user) {
+        if (user.isActive === false && user.role === UserRole.PHOTOGRAPHER) {
+          alert("Your account has been disabled by the administrator.");
+          return;
+        }
+        setCurrentUser(user);
+      }
+    } catch (err) {
+      console.error("Login failed", err);
     }
   };
 
@@ -152,83 +100,103 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setSelectedPhotos(new Set());
   };
 
-  const togglePhotoSelection = (id: string) => {
+  const togglePhotoSelection = async (id: string) => {
+    // Optimistic UI update
     setSelectedPhotos(prev => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
     });
+
+    // Backend call
+    await fetch(`${API_URL}/photos/${id}/selection`, { method: 'POST' });
   };
 
-  const submitSelections = () => {
-    if (selectedPhotos.size === 0) return;
-    alert(`Successfully submitted ${selectedPhotos.size} photos for editing!`);
+  const submitSelections = async () => {
+    if (!activeEvent) return;
+    await fetch(`${API_URL}/events/${activeEvent.id}/submit-selections`, { method: 'POST' });
+    alert(`Successfully submitted selections for ${activeEvent.name}!`);
     setSelectedPhotos(new Set());
   };
 
-  const addEvent = (eventData: Partial<Event>) => {
-    const newEvent: Event = {
-      id: `e${Date.now()}`,
-      name: eventData.name || 'Untitled Event',
-      date: eventData.date || new Date().toISOString(),
-      photographerId: currentUser?.id || 'p1',
-      coverImage: eventData.coverImage || 'https://picsum.photos/seed/new/800/400',
-      photoCount: 0,
-      assignedUsers: [],
-      subEvents: [],
-      status: 'active',
-      price: eventData.price || 0,
-      paidAmount: 0,
-      paymentStatus: 'pending',
-      optimizationSetting: 'balanced',
-      ...eventData
-    };
-    setEvents(prev => [...prev, newEvent]);
+  const addEvent = async (eventData: Partial<Event>) => {
+    try {
+      const res = await fetch(`${API_URL}/events`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(eventData)
+      });
+      const newEvent = await res.json();
+      setEvents(prev => [...prev, newEvent]);
+    } catch (err) {
+      console.error(err);
+    }
   };
 
-  const updateEvent = (updated: Event) => {
-    setEvents(prev => prev.map(e => e.id === updated.id ? updated : e));
-    if (activeEvent?.id === updated.id) setActiveEvent(updated);
+  const updateEvent = async (updated: Event) => {
+    try {
+      const res = await fetch(`${API_URL}/events/${updated.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updated)
+      });
+      const saved = await res.json();
+      setEvents(prev => prev.map(e => e.id === saved.id ? saved : e));
+      if (activeEvent?.id === saved.id) setActiveEvent(saved);
+    } catch (err) { console.error(err); }
   };
 
-  const deleteEvent = (id: string) => {
+  const deleteEvent = async (id: string) => {
+    await fetch(`${API_URL}/events/${id}`, { method: 'DELETE' });
     setEvents(prev => prev.filter(e => e.id !== id));
     if (activeEvent?.id === id) setActiveEvent(null);
   };
 
-  const addUser = (userData: Partial<User>) => {
-    const newUser: User = {
-      id: `u${Date.now()}`,
-      email: userData.email || '',
-      name: userData.name || '',
-      role: userData.role || UserRole.USER,
-      isActive: true,
-      joinDate: new Date().toISOString().split('T')[0],
-      ...userData
-    };
+  const addUser = async (userData: Partial<User>) => {
+    const res = await fetch(`${API_URL}/users`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(userData)
+    });
+    const newUser = await res.json();
     setUsers(prev => [...prev, newUser]);
   };
 
-  const updateUser = (updatedUser: User) => {
-    setUsers(prev => prev.map(u => u.id === updatedUser.id ? updatedUser : u));
-    if (currentUser?.id === updatedUser.id) {
-      setCurrentUser(updatedUser);
+  const updateUser = async (updatedUser: User) => {
+    const res = await fetch(`${API_URL}/users/${updatedUser.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updatedUser)
+    });
+    const saved = await res.json();
+    setUsers(prev => prev.map(u => u.id === saved.id ? saved : u));
+    if (currentUser?.id === saved.id) setCurrentUser(saved);
+  };
+
+  const deleteUser = (id: string) => {
+    // Implement delete logic if needed in backend
+    setUsers(prev => prev.filter(u => u.id !== id));
+  };
+
+  const addSubEvent = (eventId: string, subEvent: SubEvent) => {
+    const event = events.find(e => e.id === eventId);
+    if (event) {
+      updateEvent({ ...event, subEvents: [...event.subEvents, subEvent] });
     }
   };
 
-  const deleteUser = (id: string) => setUsers(prev => prev.filter(u => u.id !== id));
-
-  const addSubEvent = (eventId: string, subEvent: SubEvent) => {
-    setEvents(prev => prev.map(e => e.id === eventId ? { ...e, subEvents: [...e.subEvents, subEvent] } : e));
-  };
-
   const removeSubEvent = (eventId: string, subEventId: string) => {
-    setEvents(prev => prev.map(e => e.id === eventId ? { ...e, subEvents: e.subEvents.filter(se => se.id !== subEventId) } : e));
+    const event = events.find(e => e.id === eventId);
+    if (event) {
+      updateEvent({ ...event, subEvents: event.subEvents.filter(se => se.id !== subEventId) });
+    }
   };
 
-  const toggleUserStatus = (userId: string) => {
-    setUsers(prev => prev.map(u => u.id === userId ? { ...u, isActive: !u.isActive } : u));
+  const toggleUserStatus = async (userId: string) => {
+    const res = await fetch(`${API_URL}/users/${userId}/status`, { method: 'PATCH' });
+    const data = await res.json();
+    setUsers(prev => prev.map(u => u.id === userId ? { ...u, isActive: data.isActive } : u));
   };
 
   return (
