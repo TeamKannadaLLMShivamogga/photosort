@@ -31,6 +31,7 @@ export interface User {
   email: string;
   name: string;
   role: UserRole;
+  phone?: string; // Added phone field
   avatar?: string;
   familyMembers?: FamilyMember[];
   // Subscription Management Fields
@@ -79,8 +80,8 @@ export interface Event {
   paymentStatus?: 'pending' | 'partial' | 'paid';
   deadline?: string;
   optimizationSetting?: OptimizationType;
-  clientEmail?: string;
-  clientPhone?: string;
+  clientEmail?: string; // Legacy support
+  clientPhone?: string; // Legacy support
   plan?: EventPlan;
   serviceFee?: number;
 }

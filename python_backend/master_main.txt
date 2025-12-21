@@ -66,6 +66,7 @@ class SubEvent(BaseModel):
 class User(MongoBaseModel):
     email: str
     name: str
+    phone: Optional[str] = None
     role: UserRole = 'USER'
     avatar: Optional[str] = None
     familyMembers: List[FamilyMember] = []
@@ -129,6 +130,22 @@ class PaymentRequest(BaseModel):
     amount: float
     date: Optional[datetime] = None
 
+class ClientInfo(BaseModel):
+    name: str
+    email: str
+    phone: Optional[str] = None
+
+class CreateEventRequest(Event):
+    initialClients: List[ClientInfo] = []
+
+class AssignUserRequest(BaseModel):
+    name: str
+    email: str
+    phone: Optional[str] = None
+
+class RemoveUserRequest(BaseModel):
+    userId: str
+
 # --- Startup/Seeding ---
 
 async def seed_data():
@@ -166,6 +183,7 @@ async def seed_data():
         email="user@photosort.com",
         name="Rohan & Priya",
         role="USER",
+        phone="9876543210",
         avatar="https://ui-avatars.com/api/?name=Rohan+Priya&background=random"
     )
     res_client = await db.users.insert_one(client_user.model_dump(by_alias=True, exclude=["id"]))
@@ -220,6 +238,32 @@ async def trigger_ai_service(event_id: str):
             await client.post(f"{AI_SERVICE_URL}/process-event/{event_id}")
         except Exception as e:
             print(f"Failed to trigger AI service: {e}")
+
+async def resolve_and_create_user(name: str, email: str, phone: Optional[str] = None) -> str:
+    """
+    Checks if a user exists by email OR phone.
+    If yes, returns their ID.
+    If no, creates a new user and returns the new ID.
+    """
+    query = {"email": email}
+    if phone:
+        query = {"$or": [{"email": email}, {"phone": phone}]}
+    
+    existing_user = await db.users.find_one(query)
+    
+    if existing_user:
+        return str(existing_user["_id"])
+    
+    # Create new user
+    new_user = User(
+        email=email,
+        name=name,
+        phone=phone,
+        role="USER",
+        avatar=f"https://ui-avatars.com/api/?name={name}&background=random"
+    )
+    result = await db.users.insert_one(new_user.model_dump(by_alias=True, exclude=["id"]))
+    return str(result.inserted_id)
 
 # --- API Routes ---
 
@@ -283,11 +327,22 @@ async def get_events():
     return events
 
 @app.post("/api/events", response_model=Event)
-async def create_event(event: Event):
-    event_dict = event.model_dump(by_alias=True, exclude=["id"])
+async def create_event(payload: CreateEventRequest):
+    event_dict = payload.model_dump(by_alias=True, exclude=["id", "initialClients"])
+    
+    # Process Initial Clients
+    assigned_ids = []
+    if payload.initialClients:
+        for client in payload.initialClients:
+            uid = await resolve_and_create_user(client.name, client.email, client.phone)
+            assigned_ids.append(uid)
+    
+    # Ensure assignedUsers has unique IDs
+    event_dict["assignedUsers"] = list(set(event_dict.get("assignedUsers", []) + assigned_ids))
+
     if not event_dict.get("subEvents"):
          event_dict["subEvents"] = [
-             SubEvent(id=f"se-{datetime.now().timestamp()}", name="Main Event", date=event.date).model_dump()
+             SubEvent(id=f"se-{datetime.now().timestamp()}", name="Main Event", date=payload.date).model_dump()
          ]
     
     new_event = await db.events.insert_one(event_dict)
@@ -305,6 +360,34 @@ async def delete_event(id: str):
     await db.events.delete_one({"_id": ObjectId(id)})
     await db.photos.delete_many({"eventId": id})
     return {"message": "Event deleted"}
+
+# --- Event User Management ---
+
+@app.post("/api/events/{id}/assign-user", response_model=Event)
+async def assign_user_to_event(id: str, payload: AssignUserRequest):
+    event = await db.events.find_one({"_id": ObjectId(id)})
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+        
+    user_id = await resolve_and_create_user(payload.name, payload.email, payload.phone)
+    
+    # Add to set to avoid duplicates
+    await db.events.update_one(
+        {"_id": ObjectId(id)},
+        {"$addToSet": {"assignedUsers": user_id}}
+    )
+    
+    updated_event = await db.events.find_one({"_id": ObjectId(id)})
+    return updated_event
+
+@app.post("/api/events/{id}/remove-user", response_model=Event)
+async def remove_user_from_event(id: str, payload: RemoveUserRequest):
+    await db.events.update_one(
+        {"_id": ObjectId(id)},
+        {"$pull": {"assignedUsers": payload.userId}}
+    )
+    updated_event = await db.events.find_one({"_id": ObjectId(id)})
+    return updated_event
 
 # --- Payment Handling ---
 @app.post("/api/events/{id}/payment", response_model=Event)

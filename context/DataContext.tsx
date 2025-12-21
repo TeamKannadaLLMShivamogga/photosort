@@ -19,7 +19,7 @@ interface DataContextType {
   setActiveEvent: (event: Event | null) => void;
   togglePhotoSelection: (id: string) => void;
   submitSelections: () => void;
-  addEvent: (event: Partial<Event>) => Promise<void>;
+  addEvent: (event: Partial<Event> & { initialClients?: any[] }) => Promise<void>;
   updateEvent: (event: Event) => Promise<void>;
   deleteEvent: (id: string) => Promise<void>;
   addUser: (user: Partial<User>) => Promise<void>;
@@ -30,6 +30,8 @@ interface DataContextType {
   toggleUserStatus: (userId: string) => Promise<void>;
   refreshPhotos: () => Promise<void>;
   recordPayment: (eventId: string, amount: number, date?: string) => Promise<void>;
+  assignUserToEvent: (eventId: string, userDetails: { name: string, email: string, phone?: string }) => Promise<void>;
+  removeUserFromEvent: (eventId: string, userId: string) => Promise<void>;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -61,6 +63,16 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       ...item,
       id: item.id || item._id, // Handle both MongoDB _id and API id
     };
+  };
+
+  const refreshUsers = async () => {
+      try {
+          const res = await fetch(`${API_URL}/users`);
+          if (res.ok) {
+              const rawUsers = await res.json();
+              setUsers(Array.isArray(rawUsers) ? rawUsers.map(normalizeData) : []);
+          }
+      } catch (e) { console.error("Failed to refresh users", e); }
   };
 
   // Initialize and Fetch Initial Data
@@ -239,7 +251,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const addEvent = async (eventData: Partial<Event>) => {
+  const addEvent = async (eventData: Partial<Event> & { initialClients?: any[] }) => {
     try {
       const res = await fetch(`${API_URL}/events`, {
         method: 'POST',
@@ -249,6 +261,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (!res.ok) throw new Error("Failed to add event");
       const newEvent = normalizeData(await res.json());
       setEvents(prev => [...prev, newEvent]);
+      await refreshUsers(); // Refresh users in case new clients were created
     } catch (err) {
       console.error("Add Event Failed:", err);
       alert("Failed to create event. Server may be unreachable.");
@@ -371,12 +384,47 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const assignUserToEvent = async (eventId: string, userDetails: { name: string, email: string, phone?: string }) => {
+    try {
+      const res = await fetch(`${API_URL}/events/${eventId}/assign-user`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(userDetails)
+      });
+      if (!res.ok) throw new Error("Failed to assign user");
+      const updatedEvent = normalizeData(await res.json());
+      setEvents(prev => prev.map(e => e.id === eventId ? updatedEvent : e));
+      if (activeEvent?.id === eventId) setActiveEvent(updatedEvent);
+      await refreshUsers(); // Sync new user to users list
+    } catch (e) {
+      console.error("Assign User Failed:", e);
+      alert("Failed to add user to event.");
+    }
+  };
+
+  const removeUserFromEvent = async (eventId: string, userId: string) => {
+    try {
+      const res = await fetch(`${API_URL}/events/${eventId}/remove-user`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId })
+      });
+      if (!res.ok) throw new Error("Failed to remove user");
+      const updatedEvent = normalizeData(await res.json());
+      setEvents(prev => prev.map(e => e.id === eventId ? updatedEvent : e));
+      if (activeEvent?.id === eventId) setActiveEvent(updatedEvent);
+    } catch (e) {
+      console.error("Remove User Failed:", e);
+      alert("Failed to remove user from event.");
+    }
+  };
+
   return (
     <DataContext.Provider value={{
       currentUser, users, events, photos, notifications, activeEvent, selectedPhotos, isLoading,
       login, logout, setActiveEvent, togglePhotoSelection, submitSelections,
       addEvent, updateEvent, deleteEvent, addUser, updateUser, deleteUser, addSubEvent, removeSubEvent,
-      toggleUserStatus, refreshPhotos, recordPayment
+      toggleUserStatus, refreshPhotos, recordPayment, assignUserToEvent, removeUserFromEvent
     }}>
       {children}
     </DataContext.Provider>

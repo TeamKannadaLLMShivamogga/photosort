@@ -4,7 +4,7 @@ import {
   Settings, Upload, Image as ImageIcon, CheckSquare, 
   Share2, X, Clock, Download, FileJson, Calendar, ChevronLeft, Loader2,
   Edit2, Zap, ShieldCheck, FileType, Sparkles, Wand2, CreditCard, ChevronDown, FolderOpen,
-  Database, Activity, Plus, Users
+  Database, Activity, Plus, Users, Trash2
 } from 'lucide-react';
 import { useData } from '../../context/DataContext';
 import GalleryView from '../../components/Gallery/GalleryView';
@@ -15,11 +15,13 @@ import { optimizeImage } from '../../utils/imageOptimizer';
 const API_URL = '/api';
 
 const PhotographerEventDetail: React.FC<{ onNavigate: (view: string) => void, initialTab?: string }> = ({ onNavigate, initialTab }) => {
-  const { activeEvent, updateEvent, photos, users, setActiveEvent, refreshPhotos, recordPayment } = useData();
+  const { activeEvent, updateEvent, photos, users, setActiveEvent, refreshPhotos, recordPayment, assignUserToEvent, removeUserFromEvent } = useData();
   const [activeTab, setActiveTab] = useState<string>(initialTab || 'settings');
   
   const [isEditDetailsOpen, setIsEditDetailsOpen] = useState(false);
   const [editForm, setEditForm] = useState<Partial<Event>>({});
+  const [newClientForm, setNewClientForm] = useState({ name: '', email: '', phone: '' });
+  
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Payment State
@@ -51,6 +53,19 @@ const PhotographerEventDetail: React.FC<{ onNavigate: (view: string) => void, in
     if (activeEvent && editForm.name) {
       updateEvent({ ...activeEvent, ...editForm } as Event);
       setIsEditDetailsOpen(false);
+    }
+  };
+
+  const handleAddClient = async () => {
+    if (newClientForm.name && newClientForm.email) {
+      await assignUserToEvent(activeEvent.id, newClientForm);
+      setNewClientForm({ name: '', email: '', phone: '' });
+    }
+  };
+
+  const handleRemoveClient = async (userId: string) => {
+    if (confirm("Revoke access for this user?")) {
+        await removeUserFromEvent(activeEvent.id, userId);
     }
   };
 
@@ -310,6 +325,7 @@ const PhotographerEventDetail: React.FC<{ onNavigate: (view: string) => void, in
           </div>
         )}
 
+        {/* ... (Upload, Sorted, Selections, Share tabs unchanged) ... */}
         {activeTab === 'upload' && (
           <div className="max-w-5xl mx-auto space-y-4 animate-in fade-in duration-300">
             <div className="bg-white p-4 rounded-3xl border border-slate-100 shadow-sm flex items-center justify-between gap-6">
@@ -480,51 +496,77 @@ const PhotographerEventDetail: React.FC<{ onNavigate: (view: string) => void, in
       {/* Edit Details Modal */}
       {isEditDetailsOpen && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-          <div className="bg-white rounded-[2.5rem] w-full max-w-lg overflow-hidden shadow-2xl">
+          <div className="bg-white rounded-[2.5rem] w-full max-w-lg overflow-hidden shadow-2xl max-h-[90vh] flex flex-col">
             <div className="p-6 border-b border-slate-100 flex items-center justify-between">
               <h3 className="font-black text-slate-900 uppercase tracking-tight">Configuration</h3>
               <button onClick={() => setIsEditDetailsOpen(false)} className="p-2 hover:bg-slate-100 rounded-full transition-colors"><X className="w-5 h-5 text-slate-400" /></button>
             </div>
-            <div className="p-8 space-y-6 max-h-[70vh] overflow-y-auto no-scrollbar">
+            
+            <div className="p-8 space-y-6 overflow-y-auto no-scrollbar">
               <div className="space-y-2">
                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Event Name</label>
                 <input type="text" className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold outline-none text-slate-900" value={editForm.name || ''} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} />
               </div>
               
-              <div className="space-y-2">
+              <div className="space-y-3">
                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 flex items-center gap-2">
                   <Users className="w-3 h-3" /> Assigned Clients
                 </label>
-                <div className="max-h-40 overflow-y-auto border border-slate-200 rounded-2xl p-2 space-y-1 bg-slate-50">
-                  {users.filter(u => u.role === UserRole.USER).length > 0 ? (
-                    users.filter(u => u.role === UserRole.USER).map(user => (
-                      <label key={user.id} className="flex items-center gap-3 p-2 hover:bg-white rounded-xl cursor-pointer transition-colors">
-                        <input 
-                          type="checkbox" 
-                          className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
-                          checked={editForm.assignedUsers?.includes(user.id)}
-                          onChange={(e) => {
-                             const current = editForm.assignedUsers || [];
-                             if (e.target.checked) {
-                               setEditForm({...editForm, assignedUsers: [...current, user.id]});
-                             } else {
-                               setEditForm({...editForm, assignedUsers: current.filter(id => id !== user.id)});
-                             }
-                          }}
-                        />
+                
+                {/* Invite New Client Form */}
+                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3">
+                   <div className="flex items-center gap-2">
+                      <input 
+                        type="text" placeholder="Name" 
+                        className="flex-1 p-2 bg-white rounded-lg text-xs font-bold outline-none border border-transparent focus:border-[#10B981]" 
+                        value={newClientForm.name} onChange={e => setNewClientForm({...newClientForm, name: e.target.value})}
+                      />
+                      <input 
+                        type="email" placeholder="Email" 
+                        className="flex-1 p-2 bg-white rounded-lg text-xs font-bold outline-none border border-transparent focus:border-[#10B981]" 
+                        value={newClientForm.email} onChange={e => setNewClientForm({...newClientForm, email: e.target.value})}
+                      />
+                   </div>
+                   <div className="flex items-center gap-2">
+                      <input 
+                        type="tel" placeholder="Phone" 
+                        className="flex-1 p-2 bg-white rounded-lg text-xs font-bold outline-none border border-transparent focus:border-[#10B981]" 
+                        value={newClientForm.phone} onChange={e => setNewClientForm({...newClientForm, phone: e.target.value})}
+                      />
+                      <button 
+                        onClick={handleAddClient}
+                        disabled={!newClientForm.name || !newClientForm.email}
+                        className="px-4 py-2 bg-slate-900 text-white rounded-lg text-[10px] font-black uppercase disabled:opacity-50"
+                      >
+                        Add Access
+                      </button>
+                   </div>
+                </div>
+
+                {/* Existing Clients List */}
+                <div className="max-h-40 overflow-y-auto space-y-2">
+                  {users.filter(u => activeEvent.assignedUsers?.includes(u.id)).length > 0 ? (
+                    users.filter(u => activeEvent.assignedUsers?.includes(u.id)).map(user => (
+                      <div key={user.id} className="flex items-center justify-between p-3 bg-white border border-slate-100 rounded-xl shadow-sm">
                         <div className="flex flex-col">
                             <span className="text-xs font-bold text-slate-800">{user.name}</span>
-                            <span className="text-[10px] text-slate-400">{user.email}</span>
+                            <span className="text-[10px] text-slate-400">{user.email} {user.phone ? `• ${user.phone}` : ''}</span>
                         </div>
-                      </label>
+                        <button 
+                          onClick={() => handleRemoveClient(user.id)}
+                          className="p-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
                     ))
                   ) : (
-                    <p className="text-center text-xs text-slate-400 py-4">No clients found</p>
+                    <p className="text-center text-xs text-slate-400 py-4 italic">No active clients assigned</p>
                   )}
                 </div>
               </div>
             </div>
-            <div className="p-8 bg-slate-50 flex gap-4">
+            <div className="p-8 bg-slate-50 flex gap-4 mt-auto">
               <button onClick={() => setIsEditDetailsOpen(false)} className="flex-1 py-4 text-xs font-black uppercase tracking-widest text-slate-400">Cancel</button>
               <button onClick={handleUpdateDetails} className="flex-1 py-4 bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl">Save</button>
             </div>

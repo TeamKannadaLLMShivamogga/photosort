@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { useData } from '../../context/DataContext';
 import { 
   Plus, Calendar, Search, ArrowRight, MoreVertical, X, 
-  Image as ImageIcon, Filter, LayoutGrid, List, ChevronRight, Mail, Phone, Check, CreditCard, Ticket, Sparkles, ShieldCheck, Eye
+  Image as ImageIcon, Filter, LayoutGrid, List, ChevronRight, Mail, Phone, Check, CreditCard, Ticket, Sparkles, ShieldCheck, Eye, Trash2, User
 } from 'lucide-react';
 import { EventPlan } from '../../types';
 
@@ -12,7 +12,7 @@ interface EventsListProps {
 }
 
 const PhotographerEventsList: React.FC<EventsListProps> = ({ onNavigate }) => {
-  const { events, currentUser, setActiveEvent, addEvent } = useData();
+  const { events, currentUser, setActiveEvent, addEvent, users } = useData();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [step, setStep] = useState(1);
   const [viewType, setViewType] = useState<'card' | 'list'>('card');
@@ -26,12 +26,14 @@ const PhotographerEventsList: React.FC<EventsListProps> = ({ onNavigate }) => {
     startDate: '', 
     endDate: '', 
     price: 0,
-    clientEmail: '',
-    clientPhone: '',
     coverImage: 'https://picsum.photos/seed/wedding1/800/400',
     plan: EventPlan.BASIC,
     serviceFee: 499
   });
+
+  // Client Management State
+  const [clientList, setClientList] = useState<{name: string, email: string, phone: string}[]>([]);
+  const [tempClient, setTempClient] = useState({ name: '', email: '', phone: '' });
 
   const [couponCode, setCouponCode] = useState('');
   const [discountApplied, setDiscountApplied] = useState(false);
@@ -67,12 +69,26 @@ const PhotographerEventsList: React.FC<EventsListProps> = ({ onNavigate }) => {
     setStep(3);
   };
 
+  const handleAddClient = () => {
+    if (tempClient.name && tempClient.email) {
+      setClientList([...clientList, tempClient]);
+      setTempClient({ name: '', email: '', phone: '' });
+    }
+  };
+
+  const removeClient = (index: number) => {
+    setClientList(clientList.filter((_, i) => i !== index));
+  };
+
   const handleFinalSubmit = () => {
     addEvent({ 
       ...newEvent, 
       date: newEvent.startDate, 
       photographerId: currentUser?.id,
-      paymentStatus: 'paid'
+      paymentStatus: 'paid',
+      initialClients: clientList,
+      clientEmail: clientList.length > 0 ? clientList[0].email : '', // Legacy fallback
+      clientPhone: clientList.length > 0 ? clientList[0].phone : '', // Legacy fallback
     });
     resetModal();
   };
@@ -83,9 +99,11 @@ const PhotographerEventsList: React.FC<EventsListProps> = ({ onNavigate }) => {
     setDiscountApplied(false);
     setCouponCode('');
     setNewEvent({ 
-      name: '', startDate: '', endDate: '', price: 0, clientEmail: '', clientPhone: '', 
+      name: '', startDate: '', endDate: '', price: 0, 
       coverImage: 'https://picsum.photos/seed/wedding1/800/400', plan: EventPlan.BASIC, serviceFee: 499 
     });
+    setClientList([]);
+    setTempClient({ name: '', email: '', phone: '' });
   };
 
   const handleEventClick = (event: any) => {
@@ -302,7 +320,7 @@ const PhotographerEventsList: React.FC<EventsListProps> = ({ onNavigate }) => {
       {/* Create Event Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-[3rem] w-full max-w-2xl overflow-hidden shadow-2xl animate-in zoom-in-95 duration-300 flex flex-col my-auto border border-slate-100">
+          <div className="bg-white rounded-[3rem] w-full max-w-2xl overflow-hidden shadow-2xl animate-in zoom-in-95 duration-300 flex flex-col my-auto border border-slate-100 max-h-[90vh]">
             <div className="p-8 border-b border-slate-100 flex items-center justify-between">
                <div>
                  <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tight">New Workflow Setup</h3>
@@ -324,19 +342,50 @@ const PhotographerEventsList: React.FC<EventsListProps> = ({ onNavigate }) => {
                       onChange={e => setNewEvent({...newEvent, name: e.target.value})} 
                     />
                   </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Client Notification Email *</label>
-                    <input 
-                      type="email" 
-                      placeholder="client@gmail.com"
-                      className="w-full p-5 bg-slate-50 border border-slate-200 rounded-2xl outline-none text-sm font-bold text-slate-900 focus:bg-white focus:ring-4 focus:ring-[#10B981]/5 transition-all" 
-                      value={newEvent.clientEmail} 
-                      onChange={e => setNewEvent({...newEvent, clientEmail: e.target.value})} 
-                    />
+
+                  {/* Client Management Section */}
+                  <div className="space-y-4">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Client Access List</label>
+                    <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-4">
+                      <div className="flex gap-2">
+                        <input 
+                          type="text" placeholder="Name" 
+                          className="flex-1 p-3 bg-white rounded-xl text-xs font-bold outline-none border border-transparent focus:border-[#10B981]" 
+                          value={tempClient.name} onChange={e => setTempClient({...tempClient, name: e.target.value})}
+                        />
+                        <input 
+                          type="email" placeholder="Email" 
+                          className="flex-1 p-3 bg-white rounded-xl text-xs font-bold outline-none border border-transparent focus:border-[#10B981]" 
+                          value={tempClient.email} onChange={e => setTempClient({...tempClient, email: e.target.value})}
+                        />
+                        <input 
+                          type="tel" placeholder="Phone" 
+                          className="w-24 p-3 bg-white rounded-xl text-xs font-bold outline-none border border-transparent focus:border-[#10B981]" 
+                          value={tempClient.phone} onChange={e => setTempClient({...tempClient, phone: e.target.value})}
+                        />
+                        <button onClick={handleAddClient} className="p-3 bg-slate-900 text-white rounded-xl hover:bg-black transition-colors"><Plus className="w-4 h-4" /></button>
+                      </div>
+                      
+                      {clientList.length > 0 && (
+                        <div className="flex flex-wrap gap-2">
+                          {clientList.map((client, idx) => (
+                            <div key={idx} className="flex items-center gap-2 bg-white border border-slate-200 px-3 py-2 rounded-xl">
+                              <User className="w-3 h-3 text-slate-400" />
+                              <div className="flex flex-col">
+                                <span className="text-[10px] font-black text-slate-800">{client.name}</span>
+                                <span className="text-[8px] font-bold text-slate-400">{client.email}</span>
+                              </div>
+                              <button onClick={() => removeClient(idx)} className="p-1 hover:text-red-500 text-slate-300"><X className="w-3 h-3" /></button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
+
                   <div className="grid grid-cols-2 gap-6">
                      <div className="space-y-2">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Engagement Date</label>
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Event Date</label>
                         <input 
                           type="date" 
                           className="w-full p-5 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold text-slate-900 focus:bg-white focus:ring-4 focus:ring-[#10B981]/5 transition-all" 
@@ -356,7 +405,7 @@ const PhotographerEventsList: React.FC<EventsListProps> = ({ onNavigate }) => {
                      </div>
                   </div>
                   <button 
-                    disabled={!newEvent.name || !newEvent.startDate} 
+                    disabled={!newEvent.name || !newEvent.startDate || clientList.length === 0} 
                     onClick={() => setStep(2)} 
                     className="w-full py-5 bg-slate-900 text-white rounded-[1.5rem] font-black uppercase tracking-[0.25em] disabled:opacity-20 transition-all shadow-2xl active:scale-95 text-[11px]"
                   >
