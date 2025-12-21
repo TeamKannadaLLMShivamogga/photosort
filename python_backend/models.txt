@@ -19,8 +19,28 @@ PaymentStatus = Literal['pending', 'partial', 'paid']
 OptimizationType = Literal['none', 'balanced', 'performance', 'high-quality']
 SelectionStatus = Literal['open', 'submitted', 'editing', 'review', 'accepted']
 PhotoReviewStatus = Literal['pending', 'approved', 'changes_requested']
+ServiceType = Literal['service', 'addon']
+AddonStatus = Literal['pending', 'approved', 'rejected']
 
-# --- AI Analysis Sub-Models ---
+# --- Sub Models ---
+
+class Service(BaseModel):
+    id: str
+    name: str
+    price: float
+    type: ServiceType = 'service'
+    description: Optional[str] = None
+
+class Portfolio(BaseModel):
+    bio: Optional[str] = ""
+    galleryImages: List[str] = []
+    videoLinks: List[str] = []
+
+class AddonRequest(BaseModel):
+    id: str
+    serviceId: str
+    date: datetime = Field(default_factory=datetime.now)
+    status: AddonStatus = 'pending'
 
 class FaceAnalysis(BaseModel):
     num_smiling: Optional[int] = 0
@@ -67,14 +87,11 @@ class AiAnalysisResult(BaseModel):
     decor_cues: Optional[List[str]] = []
     notes: Optional[str] = ""
 
-    # Validators to normalize strings to lists
     @field_validator('event', 'type', 'color_theme', mode='before')
     def normalize_to_list(cls, v):
         if isinstance(v, str):
             return [v]
         return v or []
-
-# --- Sub Models ---
 
 class Comment(BaseModel):
     id: str
@@ -120,6 +137,8 @@ class User(MongoBaseModel):
     totalEventsCount: int = 0
     totalPhotosCount: int = 0
     totalUsersCount: int = 0
+    services: List[Service] = []
+    portfolio: Portfolio = Field(default_factory=Portfolio)
 
 class Event(MongoBaseModel):
     name: str
@@ -141,6 +160,8 @@ class Event(MongoBaseModel):
     serviceFee: Optional[float] = 0.0
     deadline: Optional[datetime] = None
     optimizationSetting: OptimizationType = 'balanced'
+    selectedServices: List[Service] = []
+    addonRequests: List[AddonRequest] = []
 
 class Photo(MongoBaseModel):
     url: str
@@ -159,7 +180,6 @@ class Photo(MongoBaseModel):
     isAiProcessed: bool = False
     originalSize: Optional[int] = 0
     optimizedSize: Optional[int] = 0
-    # New detailed AI data
     aiAnalysis: Optional[AiAnalysisResult] = None
 
 # --- Request Objects ---
@@ -182,3 +202,19 @@ class CommentInput(BaseModel):
 
 class ReviewStatusUpdate(BaseModel):
     status: PhotoReviewStatus
+
+class RenamePersonRequest(BaseModel):
+    oldName: str
+    newName: str
+
+class UpdatePortfolioRequest(BaseModel):
+    portfolio: Portfolio
+
+class UpdateServicesRequest(BaseModel):
+    services: List[Service]
+
+class AddonRequestInput(BaseModel):
+    serviceId: str
+
+class AddonStatusUpdate(BaseModel):
+    status: AddonStatus

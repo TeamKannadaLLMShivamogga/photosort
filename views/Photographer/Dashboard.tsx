@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { useData } from '../../context/DataContext';
 import { 
   Calendar, Camera, Clock, Users, ArrowRight, Plus, X, 
-  Image as ImageIcon, Wallet, Mail, Phone, Check, CreditCard, Ticket, ShieldCheck, Sparkles 
+  Image as ImageIcon, Wallet, Mail, Phone, Check, CreditCard, Ticket, ShieldCheck, Sparkles, AlertCircle
 } from 'lucide-react';
 import { EventPlan } from '../../types';
 
@@ -105,6 +105,12 @@ const PhotographerDashboard: React.FC<{ onNavigate: (view: string) => void }> = 
     });
   };
 
+  const checkActionRequired = (event: any) => {
+      if (event.selectionStatus === 'submitted') return 'Start Editing';
+      if (event.selectionStatus === 'editing') return 'Upload Edits';
+      return null;
+  };
+
   const coverOptions = [
     'https://picsum.photos/seed/wedding1/800/400',
     'https://picsum.photos/seed/wedding2/800/400',
@@ -148,12 +154,20 @@ const PhotographerDashboard: React.FC<{ onNavigate: (view: string) => void }> = 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {myEvents.slice(0, 3).map(event => {
             const balancePercent = event.price ? Math.round(((event.price - (event.paidAmount || 0)) / event.price) * 100) : 0;
+            const actionText = checkActionRequired(event);
+            const isAlert = !!actionText;
+
             return (
               <div 
                 key={event.id} 
                 onClick={() => { setActiveEvent(event); onNavigate('event-settings'); }}
-                className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden group hover:shadow-lg transition-all cursor-pointer"
+                className={`bg-white rounded-2xl border shadow-sm overflow-hidden group hover:shadow-lg transition-all cursor-pointer ${isAlert ? 'border-amber-400 ring-2 ring-amber-100' : 'border-slate-100'}`}
               >
+                {isAlert && (
+                    <div className="bg-amber-400 text-white text-[8px] font-black uppercase tracking-widest text-center py-1 flex items-center justify-center gap-1">
+                        <AlertCircle className="w-3 h-3" /> {actionText}
+                    </div>
+                )}
                 <div className="relative aspect-[16/9] overflow-hidden">
                   <img src={event.coverImage} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" alt="" />
                   <div className={`absolute top-2 right-2 px-2 py-0.5 rounded-full text-[8px] font-bold uppercase tracking-wider backdrop-blur-md ${

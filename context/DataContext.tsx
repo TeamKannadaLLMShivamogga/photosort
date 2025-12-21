@@ -1,6 +1,6 @@
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { User, UserRole, Event, Photo, Notification, SubEvent, SelectionStatus, Comment } from '../types';
+import { User, UserRole, Event, Photo, Notification, SubEvent, SelectionStatus, Comment, Service, Portfolio, AddonStatus } from '../types';
 
 // CHANGED: Use relative path to utilize Vite Proxy (solves CORS)
 const API_URL = '/api';
@@ -40,6 +40,11 @@ interface DataContextType {
   resolveComment: (photoId: string, commentId: string) => Promise<void>;
   approveAllEdits: (eventId: string) => Promise<void>;
   deletePhoto: (photoId: string) => Promise<void>;
+  updateUserServices: (userId: string, services: Service[]) => Promise<void>;
+  updateUserPortfolio: (userId: string, portfolio: Portfolio) => Promise<void>;
+  requestAddon: (eventId: string, serviceId: string) => Promise<void>;
+  updateAddonStatus: (eventId: string, requestId: string, status: AddonStatus) => Promise<void>;
+  renamePersonInEvent: (eventId: string, oldName: string, newName: string) => Promise<void>;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -432,13 +437,67 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
   };
 
+  const updateUserServices = async (userId: string, services: Service[]) => {
+      const res = await fetch(`${API_URL}/users/${userId}/services`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ services })
+      });
+      const updatedUser = normalizeData(await res.json());
+      setUsers(prev => prev.map(u => u.id === userId ? updatedUser : u));
+      if (currentUser?.id === userId) setCurrentUser(updatedUser);
+  };
+
+  const updateUserPortfolio = async (userId: string, portfolio: Portfolio) => {
+      const res = await fetch(`${API_URL}/users/${userId}/portfolio`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ portfolio })
+      });
+      const updatedUser = normalizeData(await res.json());
+      setUsers(prev => prev.map(u => u.id === userId ? updatedUser : u));
+      if (currentUser?.id === userId) setCurrentUser(updatedUser);
+  };
+
+  const requestAddon = async (eventId: string, serviceId: string) => {
+      const res = await fetch(`${API_URL}/events/${eventId}/addons`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ serviceId })
+      });
+      const updatedEvent = normalizeData(await res.json());
+      setEvents(prev => prev.map(e => e.id === eventId ? updatedEvent : e));
+      if (activeEvent?.id === eventId) setActiveEvent(updatedEvent);
+  };
+
+  const updateAddonStatus = async (eventId: string, requestId: string, status: AddonStatus) => {
+      const res = await fetch(`${API_URL}/events/${eventId}/addons/${requestId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status })
+      });
+      const updatedEvent = normalizeData(await res.json());
+      setEvents(prev => prev.map(e => e.id === eventId ? updatedEvent : e));
+      if (activeEvent?.id === eventId) setActiveEvent(updatedEvent);
+  };
+
+  const renamePersonInEvent = async (eventId: string, oldName: string, newName: string) => {
+      await fetch(`${API_URL}/events/${eventId}/rename-person`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ oldName, newName })
+      });
+      await loadPhotos(eventId);
+  };
+
   return (
     <DataContext.Provider value={{
       currentUser, users, events, photos, notifications, activeEvent, selectedPhotos, isLoading,
       login, logout, setActiveEvent, togglePhotoSelection, submitSelections,
       addEvent, updateEvent, deleteEvent, addUser, updateUser, deleteUser, addSubEvent, removeSubEvent,
       toggleUserStatus, refreshPhotos, recordPayment, assignUserToEvent, removeUserFromEvent,
-      updateEventWorkflow, uploadEditedPhoto, uploadBulkEditedPhotos, addPhotoComment, updatePhotoReviewStatus, resolveComment, approveAllEdits, deletePhoto
+      updateEventWorkflow, uploadEditedPhoto, uploadBulkEditedPhotos, addPhotoComment, updatePhotoReviewStatus, resolveComment, approveAllEdits, deletePhoto,
+      updateUserServices, updateUserPortfolio, requestAddon, updateAddonStatus, renamePersonInEvent
     }}>
       {children}
     </DataContext.Provider>

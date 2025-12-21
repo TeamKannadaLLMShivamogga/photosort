@@ -20,6 +20,29 @@ export enum EventPlan {
 export type OptimizationType = 'none' | 'balanced' | 'performance' | 'high-quality';
 export type SelectionStatus = 'open' | 'submitted' | 'editing' | 'review' | 'accepted';
 export type PhotoReviewStatus = 'pending' | 'approved' | 'changes_requested';
+export type ServiceType = 'service' | 'addon';
+export type AddonStatus = 'pending' | 'approved' | 'rejected';
+
+export interface Service {
+  id: string;
+  name: string;
+  price: number;
+  type: ServiceType;
+  description?: string;
+}
+
+export interface Portfolio {
+  bio: string;
+  galleryImages: string[];
+  videoLinks: string[];
+}
+
+export interface AddonRequest {
+  id: string;
+  serviceId: string;
+  date: string;
+  status: AddonStatus;
+}
 
 export interface FamilyMember {
   id: string;
@@ -52,6 +75,8 @@ export interface User {
   totalEventsCount?: number;
   totalPhotosCount?: number;
   totalUsersCount?: number;
+  services?: Service[];
+  portfolio?: Portfolio;
 }
 
 export interface Photo {
@@ -110,6 +135,8 @@ export interface Event {
   clientPhone?: string;
   plan?: EventPlan;
   serviceFee?: number;
+  selectedServices: Service[];
+  addonRequests: AddonRequest[];
 }
 
 export interface Notification {

@@ -2,7 +2,7 @@
 import React from 'react';
 import { 
   LayoutDashboard, Image as ImageIcon, CheckSquare, Settings, 
-  Users, LogOut, Calendar, Camera, Info, CreditCard, X
+  Users, LogOut, Calendar, Camera, Info, CreditCard, X, Briefcase, Gift, BookOpen, Lock
 } from 'lucide-react';
 import { useData } from '../context/DataContext';
 import { UserRole } from '../types';
@@ -20,10 +20,23 @@ const Sidebar: React.FC<SidebarProps> = ({ onNavigate, currentView, isOpen, onCl
 
   const getNavItems = () => {
     if (currentUser?.role === UserRole.USER) {
+      // Check for Album service (Story 31)
+      const hasAlbumService = activeEvent?.selectedServices?.some(s => s.name.toLowerCase().includes('album'));
+
       return [
         { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
         { id: 'gallery', label: 'Gallery', icon: ImageIcon, hidden: !activeEvent },
         { id: 'selections', label: 'My Selections', icon: CheckSquare, hidden: !activeEvent },
+        { 
+            id: 'album', 
+            label: 'Album Design', 
+            icon: BookOpen, 
+            hidden: !activeEvent,
+            disabled: !hasAlbumService, // Disable if service not present
+            locked: !hasAlbumService
+        },
+        { id: 'addons', label: 'Add-ons', icon: Gift, hidden: !activeEvent },
+        { id: 'studio-profile', label: 'Studio Profile', icon: Briefcase, hidden: !activeEvent }, // New Link for User
         { id: 'profile-settings', label: 'Settings', icon: Settings }
       ];
     } else if (currentUser?.role === UserRole.PHOTOGRAPHER) {
@@ -31,6 +44,7 @@ const Sidebar: React.FC<SidebarProps> = ({ onNavigate, currentView, isOpen, onCl
         { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
         { id: 'events', label: 'All Events', icon: Calendar },
         { id: 'event-settings', label: 'Event Detail', icon: Info, hidden: !activeEvent },
+        { id: 'portfolio', label: 'Portfolio', icon: Briefcase },
         { id: 'photographer-settings', label: 'Settings', icon: Settings }
       ];
     } else {
@@ -46,8 +60,9 @@ const Sidebar: React.FC<SidebarProps> = ({ onNavigate, currentView, isOpen, onCl
 
   const navItems = getNavItems().filter(i => !i.hidden);
 
-  const handleNavigation = (id: string) => {
-    onNavigate(id);
+  const handleNavigation = (item: any) => {
+    if (item.disabled) return;
+    onNavigate(item.id);
     onClose();
   };
 
@@ -77,22 +92,30 @@ const Sidebar: React.FC<SidebarProps> = ({ onNavigate, currentView, isOpen, onCl
         {currentUser?.role === UserRole.USER && <EventSwitcher />}
 
         <nav className="flex-1 px-4 py-6 space-y-1 overflow-y-auto no-scrollbar">
-          {navItems.map((item) => {
+          {navItems.map((item: any) => {
             const isActive = currentView === item.id || (item.id === 'admin-dashboard' && currentView === 'dashboard' && currentUser?.role === UserRole.ADMIN);
+            const isDisabled = item.disabled;
+
             return (
               <button
                 key={item.id}
-                onClick={() => handleNavigation(item.id)}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl transition-all duration-300 ${
+                onClick={() => handleNavigation(item)}
+                disabled={isDisabled}
+                className={`w-full flex items-center justify-between px-4 py-3 rounded-2xl transition-all duration-300 ${
                   isActive
                     ? 'bg-[#1F2937] text-white font-bold shadow-lg' 
-                    : 'text-gray-500 hover:bg-[#1F2937]/50 hover:text-gray-300'
+                    : isDisabled 
+                      ? 'text-gray-700 cursor-not-allowed hover:bg-transparent'
+                      : 'text-gray-500 hover:bg-[#1F2937]/50 hover:text-gray-300'
                 }`}
               >
-                <item.icon className={`w-4.5 h-4.5 transition-colors ${isActive ? 'text-[#10B981]' : ''}`} />
-                <span className={`text-[11px] uppercase tracking-widest font-black ${isActive ? 'text-white' : 'text-gray-500'}`}>
-                  {item.label}
-                </span>
+                <div className="flex items-center gap-3">
+                    <item.icon className={`w-4.5 h-4.5 transition-colors ${isActive ? 'text-[#10B981]' : isDisabled ? 'text-gray-700' : ''}`} />
+                    <span className={`text-[11px] uppercase tracking-widest font-black ${isActive ? 'text-white' : 'text-gray-500'} ${isDisabled ? '!text-gray-700' : ''}`}>
+                    {item.label}
+                    </span>
+                </div>
+                {item.locked && <Lock className="w-3 h-3 text-gray-700" />}
               </button>
             );
           })}

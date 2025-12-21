@@ -7,9 +7,12 @@ import EventSelector from './views/User/EventSelector';
 import UserDashboard from './views/User/Dashboard';
 import GalleryView from './components/Gallery/GalleryView';
 import UserSelections from './views/User/Selections';
+import UserAddons from './views/User/Addons';
+import UserAlbum from './views/User/Album';
 import PhotographerDashboard from './views/Photographer/Dashboard';
 import PhotographerEventsList from './views/Photographer/EventsList';
 import PhotographerEventDetail from './views/Photographer/EventDetail';
+import PhotographerPortfolio from './views/Photographer/Portfolio';
 import AdminDashboard from './views/Admin/Dashboard';
 import { 
   LogIn, Camera, Bell, Search, Settings, User as UserIcon, Save, 
@@ -166,7 +169,13 @@ const AppContent: React.FC = () => {
           : <UserDashboard onNavigate={handleNavigate} />;
       case 'gallery': return <GalleryView initialTab={viewParams?.tab} />;
       case 'selections': return <UserSelections />;
+      case 'addons': return <UserAddons />;
+      case 'album': return <UserAlbum />;
+      case 'studio-profile': 
+        // Render Read-Only Portfolio for the active event's photographer
+        return <PhotographerPortfolio targetUserId={activeEvent?.photographerId} readOnly={true} />;
       case 'event-settings': return <PhotographerEventDetail onNavigate={handleNavigate} initialTab="settings" />;
+      case 'portfolio': return <PhotographerPortfolio />;
       case 'admin-events': return <AdminDashboard view="events" onNavigate={handleNavigate} />;
       case 'admin-users': return <AdminDashboard view="users" onNavigate={handleNavigate} />;
       case 'admin-subscriptions': return <AdminDashboard view="subscriptions" onNavigate={handleNavigate} />;
@@ -329,7 +338,6 @@ const AppContent: React.FC = () => {
         );
       case 'photographer-settings': return (
         <div className="max-w-6xl mx-auto space-y-10 animate-in fade-in duration-500 pb-20">
-          {/* ... Photographer Settings content remains unchanged ... */}
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div>
               <h1 className="text-3xl font-black text-slate-900 uppercase tracking-tight">Partner Configuration</h1>
@@ -342,9 +350,7 @@ const AppContent: React.FC = () => {
               <Save className="w-4 h-4" /> Save Preferences
             </button>
           </div>
-          {/* ... Rest of Photographer Settings ... */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-             {/* Left Column: Profile & Subscription */}
              <div className="lg:col-span-5 space-y-8">
                <div className="bg-white p-8 rounded-[3rem] border border-slate-100 shadow-sm space-y-8">
                  <div className="flex flex-col items-center text-center space-y-4">
@@ -360,12 +366,9 @@ const AppContent: React.FC = () => {
                      <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mt-1">PRO PARTNER SINCE 2023</p>
                    </div>
                  </div>
-                 {/* ... Inputs ... */}
                </div>
              </div>
-             {/* Right Column */}
              <div className="lg:col-span-7 space-y-8">
-                {/* ... */}
              </div>
           </div>
         </div>

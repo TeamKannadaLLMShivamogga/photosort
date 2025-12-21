@@ -2,7 +2,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { 
   Grid2X2, Sparkles, User, Calendar, Tag, Check, Filter, 
-  X, ChevronRight, Star, CheckCircle2, Image as ImageIcon, RotateCcw, Trash2
+  X, ChevronRight, Star, CheckCircle2, Image as ImageIcon, RotateCcw, Trash2, Edit2
 } from 'lucide-react';
 import { useData } from '../../context/DataContext';
 import { Photo } from '../../types';
@@ -15,7 +15,7 @@ interface GalleryViewProps {
 }
 
 const GalleryView: React.FC<GalleryViewProps> = ({ initialTab, isPhotographer }) => {
-  const { photos, activeEvent, selectedPhotos, togglePhotoSelection, submitSelections, deletePhoto } = useData();
+  const { photos, activeEvent, selectedPhotos, togglePhotoSelection, submitSelections, deletePhoto, renamePersonInEvent } = useData();
   const [activeTab, setActiveTab] = useState<TabType>('all');
   const [selectedFilters, setSelectedFilters] = useState<{
     people: string[];
@@ -27,6 +27,7 @@ const GalleryView: React.FC<GalleryViewProps> = ({ initialTab, isPhotographer })
     activity: []
   });
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editPersonName, setEditPersonName] = useState<{old: string, new: string} | null>(null);
 
   useEffect(() => {
     if (initialTab) {
@@ -41,11 +42,9 @@ const GalleryView: React.FC<GalleryViewProps> = ({ initialTab, isPhotographer })
     [photos, activeEvent]
   );
 
-  // Calculate Sub-Event Counts
   const subEventCounts = useMemo(() => {
     const counts: Record<string, number> = {};
     activeEvent?.subEvents.forEach(se => {
-        // Count photos that match subEventId OR fallback to category name match
         counts[se.name] = eventPhotos.filter(p =>
             (p.subEventId && p.subEventId === se.id) ||
             (!p.subEventId && p.category === se.name)
@@ -60,7 +59,6 @@ const GalleryView: React.FC<GalleryViewProps> = ({ initialTab, isPhotographer })
     activity: Array.from(new Set(eventPhotos.map(p => p.category)))
   }), [eventPhotos, activeEvent]);
 
-  // Map people to a thumbnail
   const peopleThumbnails = useMemo(() => {
     const map: Record<string, string> = {};
     filterOptions.people.forEach(pName => {
@@ -77,7 +75,6 @@ const GalleryView: React.FC<GalleryViewProps> = ({ initialTab, isPhotographer })
     if (selectedFilters.people.length > 0) {
       result = result.filter(p => p.people.some(person => selectedFilters.people.includes(person)));
     }
-    // Filter by Sub-Event (Ceremony)
     if (selectedFilters.ceremony.length > 0) {
       result = result.filter(p => {
           const subEvent = activeEvent?.subEvents.find(s => selectedFilters.ceremony.includes(s.name));
@@ -100,6 +97,13 @@ const GalleryView: React.FC<GalleryViewProps> = ({ initialTab, isPhotographer })
     }));
   };
 
+  const handleRenamePerson = async () => {
+      if (editPersonName && activeEvent) {
+          await renamePersonInEvent(activeEvent.id, editPersonName.old, editPersonName.new);
+          setEditPersonName(null);
+      }
+  };
+
   const tabs: {id: TabType, label: string, icon: any}[] = [
     { id: 'all', label: 'All', icon: Grid2X2 },
     { id: 'ai', label: 'AI', icon: Sparkles },
@@ -120,7 +124,6 @@ const GalleryView: React.FC<GalleryViewProps> = ({ initialTab, isPhotographer })
           </h2>
         </div>
 
-        {/* Tabs - Space efficient horizontal scroll */}
         <div className="flex items-center gap-1 overflow-x-auto no-scrollbar pb-0.5 -mx-4 px-4">
           {tabs.map(tab => (
             <button
@@ -138,41 +141,47 @@ const GalleryView: React.FC<GalleryViewProps> = ({ initialTab, isPhotographer })
           ))}
         </div>
 
-        {/* Improved Filter Chips with Thumbnails and Counts */}
         {activeTab !== 'all' && activeTab !== 'ai' && (
           <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-1 border-t border-slate-50 mt-0.5 -mx-4 px-4">
             {filterOptions[activeTab as keyof typeof filterOptions].slice(0, 8).map(val => (
-              <button
-                key={val}
-                onClick={() => toggleFilter(activeTab as keyof typeof selectedFilters, val)}
-                className={`flex items-center gap-1.5 pl-1 pr-2.5 py-1 rounded-full text-[10px] transition-all border whitespace-nowrap shrink-0 ${
-                  selectedFilters[activeTab as keyof typeof selectedFilters].includes(val)
-                    ? 'bg-indigo-50 border-indigo-200 text-indigo-700 font-bold'
-                    : 'bg-white border-slate-100 text-slate-600 shadow-sm'
-                }`}
-              >
-                {activeTab === 'people' ? (
-                  <img 
-                    src={peopleThumbnails[val]} 
-                    className="w-5 h-5 rounded-full object-cover border border-white"
-                    alt=""
-                  />
-                ) : (
-                  <div className="w-5 h-5 rounded-full bg-slate-50 flex items-center justify-center text-[7px] font-bold text-slate-400 border border-slate-100">
-                    {val.charAt(0)}
-                  </div>
-                )}
-                <span>{val}</span>
-                
-                {/* Count Display for Sub-Events */}
-                {activeTab === 'ceremony' && (
-                    <span className={`text-[9px] font-bold ${selectedFilters.ceremony.includes(val) ? 'text-indigo-400' : 'text-slate-400'}`}>
-                        ({subEventCounts[val] || 0})
-                    </span>
-                )}
-
-                {selectedFilters[activeTab as keyof typeof selectedFilters].includes(val) && <X className="w-2.5 h-2.5" />}
-              </button>
+              <div key={val} className="relative group/chip">
+                  <button
+                    onClick={() => toggleFilter(activeTab as keyof typeof selectedFilters, val)}
+                    className={`flex items-center gap-1.5 pl-1 pr-2.5 py-1 rounded-full text-[10px] transition-all border whitespace-nowrap shrink-0 ${
+                      selectedFilters[activeTab as keyof typeof selectedFilters].includes(val)
+                        ? 'bg-indigo-50 border-indigo-200 text-indigo-700 font-bold'
+                        : 'bg-white border-slate-100 text-slate-600 shadow-sm'
+                    }`}
+                  >
+                    {activeTab === 'people' ? (
+                      <img 
+                        src={peopleThumbnails[val]} 
+                        className="w-5 h-5 rounded-full object-cover border border-white"
+                        alt=""
+                      />
+                    ) : (
+                      <div className="w-5 h-5 rounded-full bg-slate-50 flex items-center justify-center text-[7px] font-bold text-slate-400 border border-slate-100">
+                        {val.charAt(0)}
+                      </div>
+                    )}
+                    <span>{val}</span>
+                    {activeTab === 'ceremony' && (
+                        <span className={`text-[9px] font-bold ${selectedFilters.ceremony.includes(val) ? 'text-indigo-400' : 'text-slate-400'}`}>
+                            ({subEventCounts[val] || 0})
+                        </span>
+                    )}
+                    {selectedFilters[activeTab as keyof typeof selectedFilters].includes(val) && <X className="w-2.5 h-2.5" />}
+                  </button>
+                  {/* Face Edit Button (User Story 30) */}
+                  {!isPhotographer && activeTab === 'people' && (
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); setEditPersonName({ old: val, new: val }); }}
+                        className="absolute -top-1 -right-1 bg-white text-slate-500 hover:text-indigo-600 p-1 rounded-full shadow-md border border-slate-100 opacity-0 group-hover/chip:opacity-100 transition-opacity"
+                      >
+                          <Edit2 className="w-2 h-2" />
+                      </button>
+                  )}
+              </div>
             ))}
             <button 
               onClick={() => setIsModalOpen(true)}
@@ -184,7 +193,6 @@ const GalleryView: React.FC<GalleryViewProps> = ({ initialTab, isPhotographer })
         )}
       </div>
 
-      {/* Reactive High Density Grid */}
       <div className="flex-1 overflow-y-auto p-2 no-scrollbar">
         {filteredPhotos.length > 0 ? (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-1.5">
@@ -219,20 +227,11 @@ const GalleryView: React.FC<GalleryViewProps> = ({ initialTab, isPhotographer })
                   <button 
                     onClick={(e) => {
                        e.stopPropagation();
-                       if (photo.isSelected) {
-                           alert("Cannot delete a selected photo.");
-                           return;
-                       }
-                       if (activeEvent?.selectionStatus !== 'open') {
-                           alert("Project is locked/submitted. Cannot delete photos.");
-                           return;
-                       }
-                       if (confirm("Delete this photo permanently? This action cannot be undone.")) {
-                          deletePhoto(photo.id);
-                       }
+                       if (photo.isSelected) return;
+                       if (activeEvent?.selectionStatus !== 'open') return;
+                       if (confirm("Delete this photo permanently?")) deletePhoto(photo.id);
                     }}
                     className="absolute bottom-1.5 right-1.5 p-1.5 bg-white text-rose-500 rounded-full shadow-lg opacity-0 group-hover:opacity-100 hover:bg-rose-50 transition-all z-20 active:scale-90"
-                    title="Delete Photo"
                   >
                     <Trash2 className="w-3 h-3" />
                   </button>
@@ -248,7 +247,6 @@ const GalleryView: React.FC<GalleryViewProps> = ({ initialTab, isPhotographer })
         )}
       </div>
 
-      {/* Floating Action Bar - Only show if selection is OPEN */}
       {selectedPhotos.size > 0 && activeEvent?.selectionStatus === 'open' && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 px-4 sm:px-6 py-3 bg-slate-900 text-white rounded-[1.5rem] sm:rounded-3xl shadow-2xl flex items-center gap-4 sm:gap-8 z-40 animate-in fade-in slide-in-from-bottom-6 duration-300 w-[90%] sm:w-auto justify-between">
           <div className="flex flex-col sm:border-r border-slate-700 sm:pr-8">
@@ -308,6 +306,26 @@ const GalleryView: React.FC<GalleryViewProps> = ({ initialTab, isPhotographer })
             </div>
           </div>
         </div>
+      )}
+
+      {/* Edit Name Modal */}
+      {editPersonName && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+              <div className="bg-white rounded-3xl p-8 w-full max-w-sm space-y-6">
+                  <h3 className="font-bold text-lg">Rename Person</h3>
+                  <input 
+                    autoFocus
+                    type="text" 
+                    className="w-full p-3 border rounded-xl font-bold"
+                    value={editPersonName.new}
+                    onChange={(e) => setEditPersonName({...editPersonName, new: e.target.value})}
+                  />
+                  <div className="flex gap-2">
+                      <button onClick={() => setEditPersonName(null)} className="flex-1 py-3 bg-slate-100 font-bold rounded-xl text-slate-500">Cancel</button>
+                      <button onClick={handleRenamePerson} className="flex-1 py-3 bg-indigo-600 text-white font-bold rounded-xl">Save</button>
+                  </div>
+              </div>
+          </div>
       )}
     </div>
   );
