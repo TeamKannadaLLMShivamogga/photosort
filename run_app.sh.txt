@@ -1,0 +1,109 @@
+#!/bin/bash
+
+# ==========================================
+# PhotoSort Pro - Automated Startup Script
+# ==========================================
+
+ENV_NAME="photosort_env"
+CONDA_PATH=""
+
+# 0. FIND CONDA
+# ------------------------------------------
+# Try to find conda executable
+if command -v conda &> /dev/null; then
+    CONDA_PATH=$(command -v conda)
+elif [ -f "$HOME/anaconda3/bin/conda" ]; then
+    CONDA_PATH="$HOME/anaconda3/bin/conda"
+elif [ -f "$HOME/miniconda3/bin/conda" ]; then
+    CONDA_PATH="$HOME/miniconda3/bin/conda"
+elif [ -f "/opt/anaconda3/bin/conda" ]; then
+    CONDA_PATH="/opt/anaconda3/bin/conda"
+elif [ -f "/opt/miniconda3/bin/conda" ]; then
+    CONDA_PATH="/opt/miniconda3/bin/conda"
+fi
+
+if [ -z "$CONDA_PATH" ]; then
+    echo "Error: Could not find conda. Please ensure Anaconda/Miniconda is installed."
+    exit 1
+fi
+
+echo "Using Conda at: $CONDA_PATH"
+# Initialize conda for this script session
+eval "$($CONDA_PATH shell.bash hook)"
+
+# 1. FILE RENAMING
+# ------------------------------------------
+echo "--> [1/5] Checking file structure..."
+
+mkdir -p python_backend/utils
+
+# Helper function to rename if source exists
+rename_if_exists() {
+    if [ -f "$1" ]; then
+        echo "Renaming $1 to $2"
+        mv "$1" "$2"
+    fi
+}
+
+rename_if_exists "python_backend/master_main.txt" "python_backend/main.py"
+rename_if_exists "python_backend/models.txt" "python_backend/models.py"
+rename_if_exists "python_backend/utils/mongo_helpers.txt" "python_backend/utils/mongo_helpers.py"
+rename_if_exists "python_backend/utils/seeding.txt" "python_backend/utils/seeding.py"
+rename_if_exists "python_backend/gen_ai_main.txt" "python_backend/gen_ai_main.py"
+
+# 2. CONDA ENVIRONMENT SETUP
+# ------------------------------------------
+echo "--> [2/5] Setting up Conda Environment..."
+
+# Create environment with Python AND Node.js (for npm)
+# We use the default channel or conda-forge if available
+if conda info --envs | grep -q "$ENV_NAME"; then
+    echo "Environment '$ENV_NAME' already exists. Updating..."
+    # Ensure nodejs is installed in existing env
+    conda install -n "$ENV_NAME" -c conda-forge nodejs=20 -y 2>/dev/null || conda install -n "$ENV_NAME" nodejs=20 -y
+else
+    echo "Creating environment '$ENV_NAME'..."
+    # Create with python and nodejs
+    conda create -n "$ENV_NAME" -c conda-forge python=3.10 nodejs=20 -y 2>/dev/null || conda create -n "$ENV_NAME" python=3.10 nodejs=20 -y
+fi
+
+# 3. INSTALL BACKEND DEPENDENCIES
+# ------------------------------------------
+echo "--> [3/5] Installing Python Dependencies..."
+conda run -n "$ENV_NAME" pip install -r python_backend/requirements.txt
+
+# 4. INSTALL FRONTEND DEPENDENCIES
+# ------------------------------------------
+echo "--> [4/5] Installing Node Dependencies..."
+# We use conda run to ensure we use the npm installed in the environment
+conda run -n "$ENV_NAME" npm install
+
+# 5. START SERVERS
+# ------------------------------------------
+echo "--> [5/5] Starting Services..."
+
+cleanup() {
+    echo ""
+    echo "Stopping all services..."
+    # Kill background jobs
+    kill $(jobs -p) 2>/dev/null
+    exit
+}
+
+trap cleanup SIGINT SIGTERM
+
+# Start Master Backend (Port 8000)
+echo "Starting Master Backend API..."
+conda run --no-capture-output -n "$ENV_NAME" python -m uvicorn python_backend.main:app --host 0.0.0.0 --port 8000 --reload &
+
+# Start AI Service (Port 8001)
+echo "Starting AI Microservice..."
+conda run --no-capture-output -n "$ENV_NAME" python -m uvicorn python_backend.gen_ai_main:app --host 0.0.0.0 --port 8001 --reload &
+
+# Start Frontend (Vite)
+echo "Starting React Frontend..."
+echo "Application will be available at http://localhost:5173"
+conda run --no-capture-output -n "$ENV_NAME" npm run dev
+
+# Wait for user to exit
+wait
