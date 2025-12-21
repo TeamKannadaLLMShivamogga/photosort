@@ -106,7 +106,7 @@ interface DataContextType {
   removeSubEvent: (eventId: string, subEventId: string) => void;
   toggleUserStatus: (userId: string) => void;
   refreshPhotos: () => Promise<void>;
-  recordPayment: (eventId: string, amount: number) => Promise<void>;
+  recordPayment: (eventId: string, amount: number, date?: string) => Promise<void>;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -120,7 +120,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [activeEvent, setActiveEvent] = useState<Event | null>(null);
   const [selectedPhotos, setSelectedPhotos] = useState<Set<string>>(new Set());
 
-  // Fetch Initial Data
+  // Initialize and Fetch Initial Data
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -135,6 +135,18 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const eventsData = await eventsRes.json();
         setUsers(usersData);
         setEvents(eventsData);
+
+        // Restore Session if available
+        const storedUser = localStorage.getItem('photoSortUser');
+        if (storedUser) {
+            const parsedUser = JSON.parse(storedUser);
+            // Verify if user still exists in the fetched data (optional but safer)
+            const freshUser = usersData.find((u: User) => u.email === parsedUser.email);
+            if (freshUser) {
+                setCurrentUser(freshUser);
+            }
+        }
+
       } catch (error) {
         console.warn("Failed to fetch backend data. Switching to OFFLINE MODE.", error);
         // Fallback to mock data
@@ -154,11 +166,16 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const selected = new Set(data.filter((p) => p.isSelected).map((p) => p.id));
         setSelectedPhotos(selected);
       } catch (err) {
-        console.warn("Failed to load photos. Using offline photos.", err);
-        const mockPhotos = MOCK_PHOTOS.filter(p => p.eventId === eventId || p.eventId === "e1");
-        setPhotos(mockPhotos);
-        const selected = new Set(mockPhotos.filter((p) => p.isSelected).map((p) => p.id));
-        setSelectedPhotos(selected);
+        console.warn("Failed to load photos. Using offline photos if matching ID found.", err);
+        // Only fallback to mock if the Event ID matches the Mock Event ID to avoid confusing data
+        if (eventId === "e1") {
+            const mockPhotos = MOCK_PHOTOS.filter(p => p.eventId === eventId);
+            setPhotos(mockPhotos);
+            const selected = new Set(mockPhotos.filter((p) => p.isSelected).map((p) => p.id));
+            setSelectedPhotos(selected);
+        } else {
+            setPhotos([]); // Clear photos if backend fails and it's a real event
+        }
       }
   };
 
@@ -192,6 +209,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           return;
         }
         setCurrentUser(user);
+        localStorage.setItem('photoSortUser', JSON.stringify(user));
       }
     } catch (err) {
       console.warn("Backend Login failed. Trying offline login.", err);
@@ -202,6 +220,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             return;
         }
         setCurrentUser(user);
+        localStorage.setItem('photoSortUser', JSON.stringify(user));
       } else {
           // Create dummy user for offline mode
           const newUser: User = {
@@ -213,6 +232,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           };
           setCurrentUser(newUser);
           setUsers(prev => [...prev, newUser]);
+          localStorage.setItem('photoSortUser', JSON.stringify(newUser));
       }
     }
   };
@@ -221,6 +241,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setCurrentUser(null);
     setActiveEvent(null);
     setSelectedPhotos(new Set());
+    localStorage.removeItem('photoSortUser');
   };
 
   const togglePhotoSelection = async (id: string) => {
@@ -328,11 +349,17 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if(!res.ok) throw new Error("Failed");
         const saved = await res.json();
         setUsers(prev => prev.map(u => u.id === saved.id ? saved : u));
-        if (currentUser?.id === saved.id) setCurrentUser(saved);
+        if (currentUser?.id === saved.id) {
+            setCurrentUser(saved);
+            localStorage.setItem('photoSortUser', JSON.stringify(saved));
+        }
     } catch(e) {
         console.warn("Backend unavailable. Updating user locally.");
         setUsers(prev => prev.map(u => u.id === updatedUser.id ? updatedUser : u));
-        if (currentUser?.id === updatedUser.id) setCurrentUser(updatedUser);
+        if (currentUser?.id === updatedUser.id) {
+            setCurrentUser(updatedUser);
+            localStorage.setItem('photoSortUser', JSON.stringify(updatedUser));
+        }
     }
   };
 
@@ -369,12 +396,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const recordPayment = async (eventId: string, amount: number) => {
+  const recordPayment = async (eventId: string, amount: number, date?: string) => {
     try {
         const res = await fetch(`${API_URL}/events/${eventId}/payment`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ amount })
+            body: JSON.stringify({ amount, date })
         });
         if (!res.ok) throw new Error("Payment record failed");
         const updatedEvent = await res.json();

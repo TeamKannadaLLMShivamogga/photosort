@@ -27,6 +27,7 @@ client = AsyncIOMotorClient(MONGO_URL)
 db = client[DB_NAME]
 
 # --- Static File Setup ---
+# Ensure uploads directory is created in the current working directory
 UPLOAD_DIR = Path("uploads")
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -114,6 +115,7 @@ class LoginRequest(BaseModel):
 
 class PaymentRequest(BaseModel):
     amount: float
+    date: Optional[datetime] = None
 
 # --- Startup/Seeding ---
 

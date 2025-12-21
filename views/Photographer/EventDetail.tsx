@@ -23,6 +23,7 @@ const PhotographerEventDetail: React.FC<{ onNavigate: (view: string) => void, in
   // Payment State
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [paymentAmount, setPaymentAmount] = useState<string>('');
+  const [paymentDate, setPaymentDate] = useState<string>(new Date().toISOString().split('T')[0]);
 
   // Optimization State
   const [useOptimization, setUseOptimization] = useState(true);
@@ -54,9 +55,10 @@ const PhotographerEventDetail: React.FC<{ onNavigate: (view: string) => void, in
   const handleRecordPayment = async () => {
       const amount = parseFloat(paymentAmount);
       if (amount > 0) {
-          await recordPayment(activeEvent.id, amount);
+          await recordPayment(activeEvent.id, amount, paymentDate);
           setIsPaymentModalOpen(false);
           setPaymentAmount('');
+          setPaymentDate(new Date().toISOString().split('T')[0]);
       }
   };
 
@@ -512,6 +514,15 @@ const PhotographerEventDetail: React.FC<{ onNavigate: (view: string) => void, in
                     value={paymentAmount} 
                     onChange={(e) => setPaymentAmount(e.target.value)}
                     placeholder="0"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Payment Date</label>
+                <input 
+                    type="date" 
+                    className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold outline-none text-slate-900" 
+                    value={paymentDate} 
+                    onChange={(e) => setPaymentDate(e.target.value)}
                 />
               </div>
             </div>
