@@ -82,6 +82,7 @@ class Comment(BaseModel):
     text: str
     date: datetime
     role: UserRole
+    resolved: bool = False
 
 class EventTimeline(BaseModel):
     selectionDeadline: Optional[datetime] = None

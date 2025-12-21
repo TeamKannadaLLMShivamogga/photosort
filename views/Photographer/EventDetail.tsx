@@ -4,7 +4,7 @@ import {
   Settings, Upload, Image as ImageIcon, CheckSquare, 
   Share2, X, Clock, Download, FileJson, Calendar, ChevronLeft, Loader2,
   Edit2, Zap, ShieldCheck, FileType, Sparkles, Wand2, CreditCard, ChevronDown, FolderOpen,
-  Database, Activity, Plus, Users, Trash2, GitPullRequest, Lock, Unlock, Send, MessageCircle
+  Database, Activity, Plus, Users, Trash2, GitPullRequest, Lock, Unlock, Send, MessageCircle, AlertCircle, CheckCircle, UploadCloud
 } from 'lucide-react';
 import { useData } from '../../context/DataContext';
 import GalleryView from '../../components/Gallery/GalleryView';
@@ -18,7 +18,7 @@ const PhotographerEventDetail: React.FC<{ onNavigate: (view: string) => void, in
   const { 
     activeEvent, updateEvent, photos, users, setActiveEvent, refreshPhotos, 
     recordPayment, assignUserToEvent, removeUserFromEvent, addSubEvent, updateEventWorkflow,
-    uploadEditedPhoto, addPhotoComment
+    uploadEditedPhoto, addPhotoComment, resolveComment
   } = useData();
   
   const [activeTab, setActiveTab] = useState<string>(initialTab || 'settings');
@@ -28,6 +28,9 @@ const PhotographerEventDetail: React.FC<{ onNavigate: (view: string) => void, in
   const [newClientForm, setNewClientForm] = useState({ name: '', email: '', phone: '' });
   
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const editUploadRef = useRef<HTMLInputElement>(null);
+  const [activePhotoForEdit, setActivePhotoForEdit] = useState<string | null>(null);
+  const [activePhotoForComments, setActivePhotoForComments] = useState<string | null>(null);
 
   // Payment State
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
@@ -108,6 +111,14 @@ const PhotographerEventDetail: React.FC<{ onNavigate: (view: string) => void, in
 
   const handleWorkflowChange = async (status: SelectionStatus) => {
       await updateEventWorkflow(activeEvent.id, status, deliveryDate || undefined);
+  };
+
+  const handleEditUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (file && activePhotoForEdit) {
+          await uploadEditedPhoto(activePhotoForEdit, file);
+          setActivePhotoForEdit(null);
+      }
   };
 
   const tabs = [
@@ -212,6 +223,10 @@ const PhotographerEventDetail: React.FC<{ onNavigate: (view: string) => void, in
     { id: 'none', label: 'ORIGINAL FORMAT', reduction: '0%', icon: FileType },
   ];
 
+  const selectedPhotos = photos.filter(p => p.eventId === activeEvent.id && (p.isSelected || p.reviewStatus !== 'pending'));
+  const approvedCount = selectedPhotos.filter(p => p.reviewStatus === 'approved').length;
+  const reworkCount = selectedPhotos.filter(p => p.reviewStatus === 'changes_requested').length;
+
   return (
     <div className="flex flex-col h-full bg-slate-50 -m-8 animate-in fade-in duration-500">
       {/* Header */}
@@ -264,9 +279,10 @@ const PhotographerEventDetail: React.FC<{ onNavigate: (view: string) => void, in
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 no-scrollbar">
-        {/* SETTINGS TAB */}
+        {/* ... (Previous Tabs: Settings, Workflow, Upload, Gallery same as before) ... */}
         {activeTab === 'settings' && (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start max-w-7xl mx-auto">
+            {/* ... Content same as previously generated ... */}
             <div className="lg:col-span-8 space-y-4">
               <div className="bg-white p-8 rounded-[2rem] border border-slate-100 shadow-sm space-y-8">
                 <div className="flex items-center justify-between border-b border-slate-50 pb-5">
@@ -463,9 +479,9 @@ const PhotographerEventDetail: React.FC<{ onNavigate: (view: string) => void, in
             </div>
         )}
 
-        {/* UPLOAD TAB */}
         {activeTab === 'upload' && (
           <div className="max-w-5xl mx-auto space-y-4 animate-in fade-in duration-300">
+            {/* Same Upload Code as before... */}
             {/* Sub Event Selector */}
             <div className="bg-white p-4 rounded-3xl border border-slate-100 shadow-sm flex items-center gap-4">
                 <div className="flex-1">
@@ -600,14 +616,30 @@ const PhotographerEventDetail: React.FC<{ onNavigate: (view: string) => void, in
 
         {/* Other Tabs */}
         {activeTab === 'sorted' && <div className="max-w-7xl mx-auto h-full"><GalleryView /></div>}
+        
+        {/* NEW SELECTIONS TAB (Story 10, 11, 12, 14) */}
         {activeTab === 'selections' && (
           <div className="max-w-7xl mx-auto space-y-6">
              <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm flex items-center justify-between">
                 <div>
-                  <h3 className="text-xl font-black text-slate-900 tracking-tight uppercase">Deliverables Stack</h3>
-                  <p className="text-xs text-slate-500 font-medium mt-1">Photos selected by client.</p>
+                  <h3 className="text-xl font-black text-slate-900 tracking-tight uppercase">Client Selections</h3>
+                  <div className="flex items-center gap-4 mt-1 text-xs text-slate-500 font-medium">
+                      <span>{selectedPhotos.length} Selected</span>
+                      <span className="w-1 h-1 bg-slate-300 rounded-full"></span>
+                      <span className="text-green-600">{approvedCount} Approved</span>
+                      <span className="w-1 h-1 bg-slate-300 rounded-full"></span>
+                      <span className="text-amber-600">{reworkCount} Rework Requested</span>
+                  </div>
                 </div>
                 <div className="flex gap-3">
+                  {activeEvent.selectionStatus === 'submitted' && (
+                      <button 
+                        onClick={() => handleWorkflowChange('open')}
+                        className="flex items-center gap-2 px-6 py-3 bg-white border border-slate-200 text-slate-600 font-black uppercase tracking-widest rounded-2xl text-[10px] hover:border-red-200 hover:text-red-500 transition-colors"
+                      >
+                        <Unlock className="w-4 h-4" /> Unlock Selection
+                      </button>
+                  )}
                   <button onClick={() => alert('Exporting sidecars...')} className="flex items-center gap-2 px-6 py-3 bg-indigo-50 text-indigo-600 font-black uppercase tracking-widest rounded-2xl text-[10px]">
                     <FileJson className="w-4 h-4" /> Export XMP
                   </button>
@@ -616,23 +648,44 @@ const PhotographerEventDetail: React.FC<{ onNavigate: (view: string) => void, in
                   </button>
                 </div>
              </div>
+             
              <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
-               {photos.filter(p => p.eventId === activeEvent.id && (p.isSelected || p.reviewStatus !== 'pending')).map(p => (
+               <input 
+                 type="file" 
+                 ref={editUploadRef} 
+                 className="hidden" 
+                 accept="image/*" 
+                 onChange={handleEditUpload}
+               />
+               {selectedPhotos.map(p => (
                  <div key={p.id} className="relative aspect-square rounded-2xl overflow-hidden shadow-sm border-4 border-white group">
                    <img src={p.editedUrl || p.url} className="w-full h-full object-cover" alt="" />
-                   {activeEvent.selectionStatus === 'review' && (
-                       <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                           {/* Add interactions if needed */}
-                       </div>
-                   )}
+                   
+                   {/* Status Overlays */}
+                   <div className="absolute top-2 right-2 flex gap-1">
+                        {p.reviewStatus === 'approved' && <div className="bg-green-500 text-white p-1 rounded-full shadow-md"><CheckCircle className="w-3 h-3" /></div>}
+                        {p.reviewStatus === 'changes_requested' && <div className="bg-amber-500 text-white p-1 rounded-full shadow-md"><AlertCircle className="w-3 h-3" /></div>}
+                        {p.comments && p.comments.some(c => !c.resolved) && <div className="bg-red-500 text-white p-1 rounded-full shadow-md animate-pulse"><MessageCircle className="w-3 h-3" /></div>}
+                   </div>
+
+                   {/* Hover Actions */}
+                   <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-3 p-2">
+                       <button 
+                         onClick={() => { setActivePhotoForEdit(p.id); editUploadRef.current?.click(); }}
+                         className="flex items-center gap-2 px-3 py-2 bg-white text-slate-900 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-[#10B981] hover:text-white transition-colors"
+                       >
+                           <UploadCloud className="w-3 h-3" /> Upload Edit
+                       </button>
+                       <button 
+                         onClick={() => setActivePhotoForComments(p.id)}
+                         className="flex items-center gap-2 px-3 py-2 bg-white text-slate-900 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-indigo-600 hover:text-white transition-colors"
+                       >
+                           <MessageCircle className="w-3 h-3" /> {p.comments?.length || 0} Comments
+                       </button>
+                   </div>
                  </div>
                ))}
              </div>
-          </div>
-        )}
-        {activeTab === 'share' && (
-          <div className="max-w-2xl mx-auto space-y-8 pt-12 animate-in slide-in-from-bottom-8 duration-500 text-center">
-            {/* Share UI */}
           </div>
         )}
       </div>
@@ -647,6 +700,7 @@ const PhotographerEventDetail: React.FC<{ onNavigate: (view: string) => void, in
             </div>
             
             <div className="p-8 space-y-6 overflow-y-auto no-scrollbar">
+              {/* ... Same modal content ... */}
               <div className="space-y-2">
                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Event Name</label>
                 <input type="text" className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold outline-none text-slate-900" value={editForm.name || ''} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} />
@@ -769,6 +823,45 @@ const PhotographerEventDetail: React.FC<{ onNavigate: (view: string) => void, in
             </div>
           </div>
         </div>
+      )}
+
+      {/* Comment Resolver Modal */}
+      {activePhotoForComments && (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+              <div className="bg-white rounded-[2rem] w-full max-w-md overflow-hidden shadow-2xl flex flex-col max-h-[80vh]">
+                  <div className="p-6 border-b border-slate-100 flex items-center justify-between">
+                      <h3 className="font-bold text-slate-900">Resolve Feedback</h3>
+                      <button onClick={() => setActivePhotoForComments(null)}><X className="w-5 h-5 text-slate-400" /></button>
+                  </div>
+                  <div className="p-6 overflow-y-auto space-y-4 bg-slate-50 flex-1">
+                      {photos.find(p => p.id === activePhotoForComments)?.comments?.map(c => (
+                          <div key={c.id} className={`p-4 rounded-xl border ${c.resolved ? 'bg-green-50 border-green-100' : 'bg-white border-slate-200 shadow-sm'}`}>
+                              <div className="flex justify-between items-start mb-2">
+                                  <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">{c.author}</span>
+                                  <span className="text-[9px] text-slate-400">{new Date(c.date).toLocaleDateString()}</span>
+                              </div>
+                              <p className="text-sm font-medium text-slate-800">{c.text}</p>
+                              {!c.resolved && (
+                                  <button 
+                                    onClick={() => resolveComment(activePhotoForComments, c.id)}
+                                    className="mt-3 text-[10px] font-bold text-indigo-600 uppercase tracking-widest hover:underline"
+                                  >
+                                      Mark Resolved
+                                  </button>
+                              )}
+                              {c.resolved && (
+                                  <div className="mt-2 flex items-center gap-1 text-[10px] font-bold text-green-600 uppercase tracking-widest">
+                                      <CheckCircle className="w-3 h-3" /> Resolved
+                                  </div>
+                              )}
+                          </div>
+                      ))}
+                      {(!photos.find(p => p.id === activePhotoForComments)?.comments?.length) && (
+                          <p className="text-center text-slate-400 text-sm italic">No comments on this photo.</p>
+                      )}
+                  </div>
+              </div>
+          </div>
       )}
     </div>
   );

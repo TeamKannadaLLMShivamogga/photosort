@@ -34,6 +34,7 @@ export interface Comment {
   text: string;
   date: string;
   role: UserRole;
+  resolved?: boolean;
 }
 
 export interface User {

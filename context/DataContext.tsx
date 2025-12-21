@@ -36,6 +36,8 @@ interface DataContextType {
   uploadEditedPhoto: (photoId: string, file: File) => Promise<void>;
   addPhotoComment: (photoId: string, text: string) => Promise<void>;
   updatePhotoReviewStatus: (photoId: string, status: 'approved' | 'changes_requested') => Promise<void>;
+  resolveComment: (photoId: string, commentId: string) => Promise<void>;
+  approveAllEdits: (eventId: string) => Promise<void>;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -371,13 +373,38 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setPhotos(prev => prev.map(p => p.id === photoId ? updatedPhoto : p));
   };
 
+  const resolveComment = async (photoId: string, commentId: string) => {
+      const res = await fetch(`${API_URL}/photos/${photoId}/comments/${commentId}/resolve`, {
+          method: 'POST'
+      });
+      const updatedPhoto = normalizeData(await res.json());
+      setPhotos(prev => prev.map(p => p.id === photoId ? updatedPhoto : p));
+  };
+
+  const approveAllEdits = async (eventId: string) => {
+      const res = await fetch(`${API_URL}/events/${eventId}/approve-all`, {
+          method: 'POST'
+      });
+      if(res.ok) {
+          await loadPhotos(eventId);
+          const updatedEventRes = await fetch(`${API_URL}/events`);
+          const rawEventsData = await updatedEventRes.json();
+          const eventsData = Array.isArray(rawEventsData) ? rawEventsData.map(normalizeData) : [];
+          setEvents(eventsData);
+          if (activeEvent) {
+              const fresh = eventsData.find(e => e.id === activeEvent.id);
+              if (fresh) setActiveEvent(fresh);
+          }
+      }
+  };
+
   return (
     <DataContext.Provider value={{
       currentUser, users, events, photos, notifications, activeEvent, selectedPhotos, isLoading,
       login, logout, setActiveEvent, togglePhotoSelection, submitSelections,
       addEvent, updateEvent, deleteEvent, addUser, updateUser, deleteUser, addSubEvent, removeSubEvent,
       toggleUserStatus, refreshPhotos, recordPayment, assignUserToEvent, removeUserFromEvent,
-      updateEventWorkflow, uploadEditedPhoto, addPhotoComment, updatePhotoReviewStatus
+      updateEventWorkflow, uploadEditedPhoto, addPhotoComment, updatePhotoReviewStatus, resolveComment, approveAllEdits
     }}>
       {children}
     </DataContext.Provider>

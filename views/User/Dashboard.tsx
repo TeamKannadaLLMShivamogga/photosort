@@ -6,7 +6,8 @@ import {
 } from 'recharts';
 import { 
   TrendingUp, Star, Users, CheckCircle2, 
-  Calendar, Camera, Clock, ArrowRight, Image as ImageIcon, Sparkles, Smile, Users as GroupIcon, Heart, CreditCard, RefreshCw
+  Calendar, Camera, Clock, ArrowRight, Image as ImageIcon, Sparkles, Smile, Users as GroupIcon, Heart, CreditCard, RefreshCw,
+  AlertCircle, ChevronRight
 } from 'lucide-react';
 import { useData } from '../../context/DataContext';
 import EventSelector from './EventSelector';
@@ -45,8 +46,51 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ onNavigate }) => {
   const totalPaid = (activeEvent as any).paidAmount || (activeEvent.price || 0) / 2;
   const balance = (activeEvent.price || 0) - totalPaid;
 
+  const getStatusColor = (status: string) => {
+      switch(status) {
+          case 'open': return 'bg-blue-50 text-blue-700 border-blue-100';
+          case 'submitted': return 'bg-amber-50 text-amber-700 border-amber-100';
+          case 'editing': return 'bg-purple-50 text-purple-700 border-purple-100';
+          case 'review': return 'bg-orange-50 text-orange-700 border-orange-100';
+          case 'accepted': return 'bg-emerald-50 text-emerald-700 border-emerald-100';
+          default: return 'bg-slate-50 text-slate-700';
+      }
+  };
+
+  const getStatusText = (status: string) => {
+      switch(status) {
+          case 'open': return 'Selection Open';
+          case 'submitted': return 'Submitted for Editing';
+          case 'editing': return 'Editing in Progress';
+          case 'review': return 'Ready for Review';
+          case 'accepted': return 'Completed';
+          default: return status;
+      }
+  };
+
   return (
     <div className="space-y-8 animate-in fade-in duration-500 max-w-7xl mx-auto">
+      
+      {/* Workflow Status Pulse (User Story 9) */}
+      <button 
+        onClick={() => onNavigate('selections')}
+        className={`w-full flex items-center justify-between px-6 py-3 rounded-2xl border transition-all ${getStatusColor(activeEvent.selectionStatus)} shadow-sm hover:shadow-md group`}
+      >
+         <div className="flex items-center gap-3">
+            <div className="relative">
+                <div className="w-3 h-3 bg-current rounded-full animate-ping absolute opacity-75"></div>
+                <div className="w-3 h-3 bg-current rounded-full relative"></div>
+            </div>
+            <span className="text-xs font-black uppercase tracking-widest">{getStatusText(activeEvent.selectionStatus)}</span>
+            {activeEvent.timeline?.deliveryEstimate && activeEvent.selectionStatus === 'editing' && (
+                <span className="text-[10px] font-bold opacity-80 border-l border-current/20 pl-3">Expected: {new Date(activeEvent.timeline.deliveryEstimate).toLocaleDateString()}</span>
+            )}
+         </div>
+         <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest opacity-60 group-hover:opacity-100 transition-opacity">
+            View Details <ChevronRight className="w-4 h-4" />
+         </div>
+      </button>
+
       {/* Dashboard Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-5">
         <div className="flex items-center gap-5">
