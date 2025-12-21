@@ -9,13 +9,16 @@ import {
   Calendar, Camera, Clock, ArrowRight, Image as ImageIcon, Sparkles, Smile, Users as GroupIcon, Heart, CreditCard
 } from 'lucide-react';
 import { useData } from '../../context/DataContext';
+import EventSelector from './EventSelector';
 
 const COLORS = ['#6366f1', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981'];
 
 const UserDashboard: React.FC = () => {
   const { activeEvent, photos, selectedPhotos } = useData();
 
-  if (!activeEvent) return null;
+  if (!activeEvent) {
+    return <EventSelector embedded />;
+  }
 
   const eventPhotos = photos.filter(p => p.eventId === activeEvent.id);
   const aiPicks = eventPhotos.filter(p => p.isAiPick);

@@ -357,27 +357,95 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ view = 'overview', onNa
     </div>
   );
 
-  const renderUsers = () => (
-    <div className="bg-white p-6 sm:p-12 rounded-[3rem] border border-slate-100 shadow-sm flex flex-col items-center justify-center min-h-[400px] text-center space-y-8 animate-in fade-in duration-500">
-      <div className="w-20 h-20 sm:w-24 sm:h-24 bg-slate-50 text-slate-200 rounded-[2.5rem] flex items-center justify-center">
-        <Users className="w-10 h-10 sm:w-12 sm:h-12" />
-      </div>
-      <div>
-        <h3 className="text-xl sm:text-2xl font-black text-slate-900 uppercase tracking-tight">Governance</h3>
-        <p className="text-slate-500 mt-2 max-w-sm font-medium text-sm">Manage studio and client access globally.</p>
-      </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full max-w-md">
-        <div className="p-6 bg-slate-50 rounded-[2rem] border border-slate-100">
-           <p className="text-2xl font-black text-slate-900">{users.length}</p>
-           <p className="text-[10px] text-slate-400 font-bold uppercase mt-1 tracking-widest">Global Users</p>
+  const renderUsers = () => {
+    const filteredUsers = users.filter(u => 
+      u.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+      u.email.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+
+    return (
+      <div className="space-y-6 animate-in fade-in duration-500">
+        <div className="bg-white p-4 sm:p-6 rounded-3xl border border-slate-100 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="relative w-full sm:flex-1">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
+            <input 
+              type="text" 
+              placeholder="Search users..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-12 pr-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-[12px] font-bold outline-none focus:ring-2 focus:ring-indigo-100 transition-all text-slate-900"
+            />
+          </div>
+          <div className="flex items-center gap-2 px-4 py-3 bg-slate-50 rounded-2xl border border-slate-100 w-full sm:w-auto justify-center">
+            <Users className="w-4 h-4 text-slate-600" />
+            <span className="text-[10px] font-black text-slate-600 uppercase tracking-widest">{users.length} USERS</span>
+          </div>
         </div>
-        <div className="p-6 bg-slate-50 rounded-[2rem] border border-slate-100">
-           <p className="text-2xl font-black text-indigo-600">{photographers.length}</p>
-           <p className="text-[10px] text-slate-400 font-bold uppercase mt-1 tracking-widest">Studios</p>
+
+        <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden overflow-x-auto no-scrollbar">
+          <table className="w-full text-left min-w-[900px]">
+            <thead>
+              <tr className="bg-slate-50 border-b border-slate-100">
+                <th className="p-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">User Profile</th>
+                <th className="p-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Role</th>
+                <th className="p-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Joined</th>
+                <th className="p-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Status</th>
+                <th className="p-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Access</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {filteredUsers.map(u => (
+                <tr key={u.id} className="hover:bg-slate-50/50 transition-colors">
+                  <td className="p-6">
+                    <div className="flex items-center gap-4">
+                      <div className="relative">
+                        <img src={u.avatar || `https://ui-avatars.com/api/?name=${u.name}&background=10B981&color=fff`} className="w-10 h-10 rounded-xl object-cover border-2 border-white shadow-sm" alt="" />
+                      </div>
+                      <div>
+                        <p className="font-black text-slate-900 text-sm tracking-tight">{u.name}</p>
+                        <p className="text-[10px] text-slate-400 font-bold uppercase">{u.email}</p>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="p-6 text-center">
+                    <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest ${
+                      u.role === 'ADMIN' ? 'bg-purple-50 text-purple-600' : 
+                      u.role === 'PHOTOGRAPHER' ? 'bg-indigo-50 text-indigo-600' : 'bg-slate-100 text-slate-600'
+                    }`}>
+                      {u.role}
+                    </span>
+                  </td>
+                  <td className="p-6 text-center text-[11px] font-black">
+                    {u.joinDate ? new Date(u.joinDate).toLocaleDateString() : 'N/A'}
+                  </td>
+                  <td className="p-6 text-center">
+                    <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest ${
+                      u.isActive ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'
+                    }`}>
+                      {u.isActive ? 'ACTIVE' : 'SUSPENDED'}
+                    </div>
+                  </td>
+                  <td className="p-6 text-right">
+                    <button 
+                      onClick={() => toggleUserStatus(u.id)}
+                      className={`p-2 rounded-xl transition-all ${
+                        u.isActive 
+                          ? 'text-[#10B981] bg-emerald-50' 
+                          : 'text-red-500 bg-red-50'
+                      }`}
+                      title={u.isActive ? 'Suspend User' : 'Activate User'}
+                    >
+                      {u.isActive ? <ToggleRight className="w-6 h-6" /> : <ToggleLeft className="w-6 h-6" />}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   const renderSettings = () => (
     <div className="max-w-3xl space-y-8 animate-in slide-in-from-bottom-8 duration-500">

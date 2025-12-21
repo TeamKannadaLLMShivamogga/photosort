@@ -146,10 +146,6 @@ const AppContent: React.FC = () => {
     );
   }
 
-  if (currentUser.role === UserRole.USER && !activeEvent) {
-    return <EventSelector />;
-  }
-
   const renderContent = () => {
     switch (currentView) {
       case 'dashboard': 

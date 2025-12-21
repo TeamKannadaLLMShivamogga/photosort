@@ -22,8 +22,8 @@ const Sidebar: React.FC<SidebarProps> = ({ onNavigate, currentView, isOpen, onCl
     if (currentUser?.role === UserRole.USER) {
       return [
         { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-        { id: 'gallery', label: 'Gallery', icon: ImageIcon },
-        { id: 'selections', label: 'My Selections', icon: CheckSquare },
+        { id: 'gallery', label: 'Gallery', icon: ImageIcon, hidden: !activeEvent },
+        { id: 'selections', label: 'My Selections', icon: CheckSquare, hidden: !activeEvent },
         { id: 'profile-settings', label: 'Settings', icon: Settings }
       ];
     } else if (currentUser?.role === UserRole.PHOTOGRAPHER) {

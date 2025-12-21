@@ -3,7 +3,11 @@ import React from 'react';
 import { Calendar, Camera, ChevronRight, Search } from 'lucide-react';
 import { useData } from '../../context/DataContext';
 
-const EventSelector: React.FC = () => {
+interface EventSelectorProps {
+  embedded?: boolean;
+}
+
+const EventSelector: React.FC<EventSelectorProps> = ({ embedded }) => {
   const { events, currentUser, setActiveEvent } = useData();
   const [searchTerm, setSearchTerm] = React.useState('');
 
@@ -14,13 +18,15 @@ const EventSelector: React.FC = () => {
   );
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col p-8 items-center justify-center">
+    <div className={`flex flex-col items-center justify-start ${embedded ? 'w-full h-full' : 'min-h-screen bg-slate-50 p-8 justify-center'}`}>
       <div className="w-full max-w-5xl space-y-8">
         <div className="text-center space-y-3">
-          <div className="w-16 h-16 bg-indigo-600 rounded-2xl mx-auto flex items-center justify-center shadow-xl shadow-indigo-200">
-            <Camera className="text-white w-8 h-8" />
-          </div>
-          <h1 className="text-4xl font-bold text-slate-800">Welcome, {currentUser?.name}</h1>
+          {!embedded && (
+            <div className="w-16 h-16 bg-indigo-600 rounded-2xl mx-auto flex items-center justify-center shadow-xl shadow-indigo-200">
+              <Camera className="text-white w-8 h-8" />
+            </div>
+          )}
+          <h1 className="text-3xl sm:text-4xl font-bold text-slate-800">Welcome, {currentUser?.name}</h1>
           <p className="text-lg text-slate-500">Please select an event to get started</p>
         </div>
 

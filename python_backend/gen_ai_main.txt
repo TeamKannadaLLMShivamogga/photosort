@@ -1,3 +1,4 @@
+
 """
 PhotoSort Pro - Gen AI Service (FastAPI)
 
@@ -191,12 +192,13 @@ async def mock_process_photo(photo, event_subevents):
     tags = list(set(result.event + result.type + result.decor_cues))
     is_ai_pick = result.quality.sharp_subject and not result.quality.blurry
     
+    # Return structured data that matches the Backend Photo Schema
     return {
-        **result.model_dump(),
+        "aiAnalysis": result.model_dump(),
         "tags": tags,
         "isAiPick": is_ai_pick,
+        "quality": 'high' if is_ai_pick else 'medium', # Provide string, not object
         "isAiProcessed": True,
-        # Keep category mapping for older frontend logic if needed
         "category": result.event[0] if result.event else "other"
     }
 
@@ -269,6 +271,7 @@ async def qwen_process_photo(photo, event_subevents):
             "tags": list(set(legacy_tags))[:10], # Limit tags
             "people": people,
             "isAiPick": is_ai_pick,
+            "quality": 'high' if is_ai_pick else 'medium', # Provide string, not object
             "category": category,
             "isAiProcessed": True
         }
