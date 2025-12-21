@@ -383,7 +383,12 @@ const PhotographerEventDetail: React.FC<{ onNavigate: (view: string) => void, in
                 </div>
 
                 <div className="pt-8 border-t border-slate-50">
-                  <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-4">Event Timeline / Sub-Events</h4>
+                  <div className="flex items-center justify-between mb-4">
+                      <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Event Timeline / Sub-Events</h4>
+                      <button onClick={() => setIsSubEventModalOpen(true)} className="flex items-center gap-1 text-[10px] font-black uppercase tracking-widest text-[#10B981] bg-emerald-50 px-3 py-1.5 rounded-lg hover:bg-emerald-100 transition-all">
+                          <Plus className="w-3 h-3" /> Add Sub-Event
+                      </button>
+                  </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {activeEvent.subEvents.map(se => (
                       <div key={se.id} className="p-4 bg-slate-50 rounded-2xl border border-slate-100 flex items-center justify-between group">
@@ -519,9 +524,14 @@ const PhotographerEventDetail: React.FC<{ onNavigate: (view: string) => void, in
         {/* GALLERY TAB (Raw Images) */}
         {activeTab === 'sorted' && (
             <div className="max-w-7xl mx-auto h-full flex flex-col relative">
-                <div className="absolute top-[-52px] right-0 z-30">
-                    <button onClick={() => setIsRawUploadModalOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-[#10B981] text-white rounded-xl shadow-lg hover:bg-[#059669] transition-all text-[10px] font-black uppercase tracking-widest active:scale-95">
-                        <UploadCloud className="w-4 h-4" /> Upload Raw Images
+                <div className="flex justify-end mb-4 px-4">
+                    <button 
+                        onClick={() => setIsRawUploadModalOpen(true)} 
+                        disabled={isUploading}
+                        className={`flex items-center gap-2 px-4 py-2 bg-[#10B981] text-white rounded-xl shadow-lg transition-all text-[10px] font-black uppercase tracking-widest active:scale-95 ${isUploading ? 'opacity-50 cursor-not-allowed grayscale' : 'hover:bg-[#059669]'}`}
+                    >
+                        {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <UploadCloud className="w-4 h-4" />} 
+                        {isUploading ? 'Uploading...' : 'Upload Raw Images'}
                     </button>
                 </div>
                 <GalleryView isPhotographer={true} />
@@ -684,10 +694,19 @@ const PhotographerEventDetail: React.FC<{ onNavigate: (view: string) => void, in
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
               <div className="bg-white rounded-[2rem] p-8 w-full max-w-sm space-y-4">
                   <h3 className="font-black text-lg">Add Sub-Event</h3>
-                  <input type="text" placeholder="Name (e.g. Reception)" className="w-full p-3 border rounded-xl" value={newSubEvent.name} onChange={e => setNewSubEvent({...newSubEvent, name: e.target.value})} />
-                  <input type="date" className="w-full p-3 border rounded-xl" value={newSubEvent.date} onChange={e => setNewSubEvent({...newSubEvent, date: e.target.value})} />
-                  <input type="date" placeholder="End Date (Optional)" className="w-full p-3 border rounded-xl" value={newSubEvent.endDate} onChange={e => setNewSubEvent({...newSubEvent, endDate: e.target.value})} />
-                  <div className="flex gap-2">
+                  <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-slate-400 uppercase">Sub-Event Name</label>
+                      <input type="text" placeholder="e.g. Reception" className="w-full p-3 border rounded-xl" value={newSubEvent.name} onChange={e => setNewSubEvent({...newSubEvent, name: e.target.value})} />
+                  </div>
+                  <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-slate-400 uppercase">Start Date</label>
+                      <input type="date" className="w-full p-3 border rounded-xl" value={newSubEvent.date} onChange={e => setNewSubEvent({...newSubEvent, date: e.target.value})} />
+                  </div>
+                  <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-slate-400 uppercase">End Date (Optional)</label>
+                      <input type="date" placeholder="End Date (Optional)" className="w-full p-3 border rounded-xl" value={newSubEvent.endDate} onChange={e => setNewSubEvent({...newSubEvent, endDate: e.target.value})} />
+                  </div>
+                  <div className="flex gap-2 pt-4">
                       <button onClick={() => setIsSubEventModalOpen(false)} className="flex-1 py-3 text-slate-500 font-bold">Cancel</button>
                       <button onClick={handleCreateSubEvent} className="flex-1 py-3 bg-slate-900 text-white rounded-xl font-bold">Create</button>
                   </div>
