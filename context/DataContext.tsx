@@ -45,6 +45,7 @@ interface DataContextType {
   requestAddon: (eventId: string, serviceId: string) => Promise<void>;
   updateAddonStatus: (eventId: string, requestId: string, status: AddonStatus) => Promise<void>;
   renamePersonInEvent: (eventId: string, oldName: string, newName: string) => Promise<void>;
+  uploadAsset: (file: File) => Promise<string>;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -490,6 +491,17 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await loadPhotos(eventId);
   };
 
+  const uploadAsset = async (file: File) => {
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await fetch(`${API_URL}/upload`, {
+          method: 'POST',
+          body: formData
+      });
+      const data = await res.json();
+      return data.url;
+  };
+
   return (
     <DataContext.Provider value={{
       currentUser, users, events, photos, notifications, activeEvent, selectedPhotos, isLoading,
@@ -497,7 +509,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       addEvent, updateEvent, deleteEvent, addUser, updateUser, deleteUser, addSubEvent, removeSubEvent,
       toggleUserStatus, refreshPhotos, recordPayment, assignUserToEvent, removeUserFromEvent,
       updateEventWorkflow, uploadEditedPhoto, uploadBulkEditedPhotos, addPhotoComment, updatePhotoReviewStatus, resolveComment, approveAllEdits, deletePhoto,
-      updateUserServices, updateUserPortfolio, requestAddon, updateAddonStatus, renamePersonInEvent
+      updateUserServices, updateUserPortfolio, requestAddon, updateAddonStatus, renamePersonInEvent,
+      uploadAsset
     }}>
       {children}
     </DataContext.Provider>

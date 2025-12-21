@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useData } from '../../context/DataContext';
-import { Save, Plus, Trash2, Video, Image as ImageIcon, Link, FileText, Check, Briefcase, UploadCloud, X, User } from 'lucide-react';
+import { Save, Plus, Trash2, Video, Image as ImageIcon, Link, FileText, Briefcase, UploadCloud, X, User, Play, Loader2 } from 'lucide-react';
 import { Service, Portfolio } from '../../types';
 
 interface PortfolioProps {
@@ -10,7 +10,7 @@ interface PortfolioProps {
 }
 
 const PhotographerPortfolio: React.FC<PortfolioProps> = ({ targetUserId, readOnly = false }) => {
-  const { currentUser: loggedInUser, users, updateUserServices, updateUserPortfolio } = useData();
+  const { currentUser: loggedInUser, users, updateUserServices, updateUserPortfolio, uploadAsset } = useData();
   
   // Determine which user's portfolio to show
   const displayUser = targetUserId 
@@ -22,6 +22,10 @@ const PhotographerPortfolio: React.FC<PortfolioProps> = ({ targetUserId, readOnl
   const [galleryImages, setGalleryImages] = useState<string[]>([]);
   const [services, setServices] = useState<Service[]>([]);
   const [newVideo, setNewVideo] = useState('');
+  
+  // UI States
+  const [isUploading, setIsUploading] = useState(false);
+  const [activeVideoId, setActiveVideoId] = useState<string | null>(null); // For playing video
   
   const galleryInputRef = useRef<HTMLInputElement>(null);
   
@@ -58,10 +62,18 @@ const PhotographerPortfolio: React.FC<PortfolioProps> = ({ targetUserId, readOnl
     setVideoLinks(videoLinks.filter((_, i) => i !== idx));
   };
 
-  const handleGalleryUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleGalleryUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
-        const url = URL.createObjectURL(e.target.files[0]);
-        setGalleryImages([...galleryImages, url]);
+        setIsUploading(true);
+        try {
+            const url = await uploadAsset(e.target.files[0]);
+            setGalleryImages([...galleryImages, url]);
+        } catch (error) {
+            console.error("Upload failed", error);
+            alert("Failed to upload image");
+        } finally {
+            setIsUploading(false);
+        }
     }
   };
 
@@ -89,6 +101,12 @@ const PhotographerPortfolio: React.FC<PortfolioProps> = ({ targetUserId, readOnl
     const updated = services.filter(s => s.id !== id);
     setServices(updated);
     if (displayUser) updateUserServices(displayUser.id, updated);
+  };
+
+  const getYouTubeId = (url: string) => {
+    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
+    const match = url.match(regExp);
+    return (match && match[2].length === 11) ? match[2] : null;
   };
 
   if (!displayUser) return <div className="p-10 text-center text-slate-400">Loading Portfolio...</div>;
@@ -180,28 +198,48 @@ const PhotographerPortfolio: React.FC<PortfolioProps> = ({ targetUserId, readOnl
             </div>
           )}
 
-          <div className="space-y-3">
-            {videoLinks.map((link, i) => (
-              <div key={i} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
-                <div className="flex items-center gap-3 overflow-hidden">
-                  <Link className="w-4 h-4 text-slate-400 shrink-0" />
-                  {readOnly ? (
-                      <a href={link} target="_blank" rel="noopener noreferrer" className="text-xs truncate text-indigo-600 hover:underline font-bold">
-                          {link}
-                      </a>
-                  ) : (
-                      <span className="text-xs truncate text-slate-600">{link}</span>
-                  )}
-                </div>
-                {!readOnly && (
+          {/* Video Carousel */}
+          {readOnly ? (
+             <div className="flex gap-4 overflow-x-auto pb-4 no-scrollbar">
+                {videoLinks.map((link, i) => {
+                    const ytid = getYouTubeId(link);
+                    return (
+                        <button 
+                            key={i} 
+                            onClick={() => setActiveVideoId(ytid)}
+                            className="relative shrink-0 w-64 aspect-video rounded-xl overflow-hidden group shadow-md border border-slate-200 hover:shadow-xl transition-all"
+                        >
+                            <img 
+                                src={ytid ? `https://img.youtube.com/vi/${ytid}/mqdefault.jpg` : 'https://via.placeholder.com/300x200?text=Video'} 
+                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" 
+                                alt="Video Thumbnail" 
+                            />
+                            <div className="absolute inset-0 bg-black/20 group-hover:bg-black/40 transition-colors flex items-center justify-center">
+                                <div className="w-10 h-10 bg-white/90 rounded-full flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform">
+                                    <Play className="w-4 h-4 text-slate-900 ml-0.5" />
+                                </div>
+                            </div>
+                        </button>
+                    );
+                })}
+                {videoLinks.length === 0 && <p className="text-xs text-slate-400 italic">No videos featured.</p>}
+             </div>
+          ) : (
+            <div className="space-y-3">
+                {videoLinks.map((link, i) => (
+                <div key={i} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
+                    <div className="flex items-center gap-3 overflow-hidden">
+                    <Link className="w-4 h-4 text-slate-400 shrink-0" />
+                    <span className="text-xs truncate text-slate-600">{link}</span>
+                    </div>
                     <button onClick={() => removeVideo(i)} className="p-1.5 hover:bg-white rounded-lg text-slate-400 hover:text-red-500 transition-colors">
                     <Trash2 className="w-4 h-4" />
                     </button>
-                )}
-              </div>
-            ))}
-            {videoLinks.length === 0 && <p className="text-xs text-slate-400 italic text-center py-4">No videos added</p>}
-          </div>
+                </div>
+                ))}
+                {videoLinks.length === 0 && <p className="text-xs text-slate-400 italic text-center py-4">No videos added</p>}
+            </div>
+          )}
         </div>
 
         {/* IMAGE GALLERY */}
@@ -214,10 +252,11 @@ const PhotographerPortfolio: React.FC<PortfolioProps> = ({ targetUserId, readOnl
                 {!readOnly && (
                     <>
                         <button 
+                            disabled={isUploading}
                             onClick={() => galleryInputRef.current?.click()}
-                            className="flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-black"
+                            className="flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-black disabled:opacity-50"
                         >
-                            <UploadCloud className="w-4 h-4" /> Upload Photos
+                            {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <UploadCloud className="w-4 h-4" />} Upload Photos
                         </button>
                         <input type="file" ref={galleryInputRef} className="hidden" accept="image/*" onChange={handleGalleryUpload} />
                     </>
@@ -321,6 +360,27 @@ const PhotographerPortfolio: React.FC<PortfolioProps> = ({ targetUserId, readOnl
           </div>
         </div>
       </div>
+
+      {/* VIDEO PLAYER MODAL */}
+      {activeVideoId && (
+          <div 
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4 backdrop-blur-sm animate-in fade-in duration-200" 
+            onClick={() => setActiveVideoId(null)}
+          >
+             <div className="w-full max-w-5xl aspect-video bg-black rounded-2xl overflow-hidden shadow-2xl relative">
+                <iframe 
+                    src={`https://www.youtube.com/embed/${activeVideoId}?autoplay=1&rel=0`} 
+                    className="w-full h-full" 
+                    title="YouTube Video"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+                    allowFullScreen 
+                />
+             </div>
+             <button className="absolute top-4 right-4 text-white/50 hover:text-white p-2 rounded-full transition-colors">
+                 <X className="w-8 h-8" />
+             </button>
+          </div>
+      )}
     </div>
   );
 };

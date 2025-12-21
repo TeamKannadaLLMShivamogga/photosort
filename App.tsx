@@ -17,11 +17,11 @@ import AdminDashboard from './views/Admin/Dashboard';
 import { 
   LogIn, Camera, Bell, Search, Settings, User as UserIcon, Save, 
   Image as ImageIcon, Plus, Trash2, Upload, Heart, UserPlus, Info, Users, Menu,
-  CreditCard, Landmark, Globe, Smartphone, Mail, ShieldCheck, Zap, ChevronRight, Lock
+  CreditCard, Landmark, Globe, Smartphone, Mail, ShieldCheck, Zap, ChevronRight, Lock, Loader2
 } from 'lucide-react';
 
 const AppContent: React.FC = () => {
-  const { currentUser, activeEvent, login, updateUser } = useData();
+  const { currentUser, activeEvent, login, updateUser, uploadAsset } = useData();
   const [currentView, setCurrentView] = useState('dashboard');
   const [viewParams, setViewParams] = useState<any>(null); // State for navigation parameters
   const [email, setEmail] = useState('');
@@ -31,6 +31,8 @@ const AppContent: React.FC = () => {
   const [editName, setEditName] = useState('');
   const [editAvatar, setEditAvatar] = useState('');
   const [familyMembers, setFamilyMembers] = useState<FamilyMember[]>([]);
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+  const [isUploadingFamily, setIsUploadingFamily] = useState(false);
   
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const familyMemberInputRef = useRef<HTMLInputElement>(null);
@@ -65,11 +67,19 @@ const AppContent: React.FC = () => {
     }
   };
 
-  const handleAvatarUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const url = URL.createObjectURL(file);
-      setEditAvatar(url);
+      setIsUploadingAvatar(true);
+      try {
+        const url = await uploadAsset(file);
+        setEditAvatar(url);
+      } catch (e) {
+        console.error("Avatar upload failed", e);
+        alert("Failed to upload avatar image.");
+      } finally {
+        setIsUploadingAvatar(false);
+      }
     }
   };
 
@@ -95,12 +105,20 @@ const AppContent: React.FC = () => {
     familyMemberInputRef.current?.click();
   };
 
-  const handleFamilyPhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFamilyPhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file && currentFamilyMemberId) {
-      const url = URL.createObjectURL(file);
-      updateFamilyMember(currentFamilyMemberId, { referencePhoto: url });
-      setCurrentFamilyMemberId(null);
+      setIsUploadingFamily(true);
+      try {
+        const url = await uploadAsset(file);
+        updateFamilyMember(currentFamilyMemberId, { referencePhoto: url });
+      } catch (e) {
+        console.error("Family photo upload failed", e);
+        alert("Failed to upload reference photo.");
+      } finally {
+        setIsUploadingFamily(false);
+        setCurrentFamilyMemberId(null);
+      }
     }
   };
 
@@ -191,7 +209,8 @@ const AppContent: React.FC = () => {
               </div>
               <button 
                 onClick={handleUpdateProfile}
-                className="w-full sm:w-auto bg-[#10B981] hover:bg-[#059669] text-white px-8 py-3.5 rounded-2xl font-black uppercase tracking-[0.15em] transition-all shadow-xl shadow-[#10B981]/20 text-[11px] flex items-center justify-center gap-2 active:scale-95"
+                disabled={isUploadingAvatar || isUploadingFamily}
+                className="w-full sm:w-auto bg-[#10B981] hover:bg-[#059669] disabled:opacity-50 disabled:cursor-not-allowed text-white px-8 py-3.5 rounded-2xl font-black uppercase tracking-[0.15em] transition-all shadow-xl shadow-[#10B981]/20 text-[11px] flex items-center justify-center gap-2 active:scale-95"
               >
                 <Save className="w-4 h-4" /> Finalize Changes
               </button>
@@ -207,9 +226,15 @@ const AppContent: React.FC = () => {
                       className="w-44 h-44 rounded-[3.5rem] border-8 border-slate-50 shadow-2xl object-cover transition-all group-hover:brightness-90"
                       alt="Profile"
                     />
+                    {isUploadingAvatar && (
+                        <div className="absolute inset-0 bg-black/30 rounded-[3.5rem] flex items-center justify-center">
+                            <Loader2 className="w-10 h-10 text-white animate-spin" />
+                        </div>
+                    )}
                     <button 
                       onClick={() => avatarInputRef.current?.click()}
-                      className="absolute bottom-2 right-2 w-12 h-12 bg-[#10B981] text-white rounded-2xl flex items-center justify-center shadow-2xl hover:bg-slate-900 transition-all active:scale-90"
+                      disabled={isUploadingAvatar}
+                      className="absolute bottom-2 right-2 w-12 h-12 bg-[#10B981] text-white rounded-2xl flex items-center justify-center shadow-2xl hover:bg-slate-900 transition-all active:scale-90 disabled:opacity-50"
                     >
                       <Upload className="w-5 h-5" />
                     </button>
@@ -275,6 +300,11 @@ const AppContent: React.FC = () => {
                               <div className="w-16 h-16 rounded-2xl bg-white border-4 border-slate-100 flex items-center justify-center text-slate-300">
                                 <ImageIcon className="w-6 h-6" />
                               </div>
+                            )}
+                            {isUploadingFamily && currentFamilyMemberId === member.id && (
+                                <div className="absolute inset-0 bg-black/30 rounded-2xl flex items-center justify-center">
+                                    <Loader2 className="w-6 h-6 text-white animate-spin" />
+                                </div>
                             )}
                             <button 
                               onClick={() => triggerFamilyPhotoUpload(member.id)}

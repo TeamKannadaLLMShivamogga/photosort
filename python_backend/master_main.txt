@@ -319,6 +319,19 @@ async def update_services(id: str, payload: UpdateServicesRequest):
     await db.users.update_one({"_id": ObjectId(id)}, {"$set": {"services": services_data}})
     return await db.users.find_one({"_id": ObjectId(id)})
 
+# --- NEW: Generic Upload Endpoint ---
+@app.post("/api/upload", response_model=Dict[str, str])
+async def upload_general_file(file: UploadFile = File(...)):
+    asset_dir = UPLOAD_DIR / "assets"
+    asset_dir.mkdir(parents=True, exist_ok=True)
+    ext = os.path.splitext(file.filename)[1] or ".jpg"
+    fname = f"asset_{uuid.uuid4()}{ext}"
+    fpath = asset_dir / fname
+    content = await file.read()
+    with open(fpath, "wb") as f:
+        f.write(content)
+    return {"url": f"/uploads/assets/{fname}"}
+
 # --- Event Endpoints ---
 
 @app.get("/api/events", response_model=List[Event])
