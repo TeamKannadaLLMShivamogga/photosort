@@ -1,35 +1,19 @@
-"""
-PhotoSort Pro - Master Backend Server (FastAPI)
-
-This module acts as the primary API gateway for the application.
-It uses modularized components for models and utilities.
-
-To run:
-1. Ensure the folder structure is correct (utils/ and models.py).
-2. pip install -r requirements.txt
-3. uvicorn main:app --reload
-"""
-
 import os
+import shutil
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Literal, Set
 from contextlib import asynccontextmanager
+from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException, Body, BackgroundTasks, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, Field, BeforeValidator, ConfigDict
 from motor.motor_asyncio import AsyncIOMotorClient
 from bson import ObjectId
+from typing_extensions import Annotated
 import httpx
 from dotenv import load_dotenv
-
-# --- Local Imports (Assuming file extension rename to .py) ---
-from .models import (
-    User, Event, Photo, SubEvent, 
-    LoginRequest, PhotoUploadRequest, 
-    UserRole, SubscriptionTier
-)
-from .utils.seeding import seed_data
-from .utils.mongo_helpers import PyObjectId
 
 load_dotenv()
 
@@ -37,14 +21,168 @@ load_dotenv()
 MONGO_URL = os.getenv("MONGODB_URL", "mongodb://localhost:27017")
 DB_NAME = "photosort"
 AI_SERVICE_URL = os.getenv("AI_SERVICE_URL", "http://localhost:8001")
+BASE_URL = "http://localhost:8000"
 
 client = AsyncIOMotorClient(MONGO_URL)
 db = client[DB_NAME]
 
+# --- Static File Setup ---
+UPLOAD_DIR = Path("uploads")
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+# --- Pydantic ObjectId Helper ---
+PyObjectId = Annotated[str, BeforeValidator(str)]
+
+class MongoBaseModel(BaseModel):
+    id: Optional[PyObjectId] = Field(alias="_id", default=None)
+    model_config = ConfigDict(
+        populate_by_name=True,
+        arbitrary_types_allowed=True,
+        json_encoders={ObjectId: str}
+    )
+
+# --- Models (Matching Frontend Types) ---
+
+UserRole = Literal['ADMIN', 'PHOTOGRAPHER', 'USER']
+SubscriptionTier = Literal['FREE', 'PRO', 'STUDIO']
+EventStatus = Literal['active', 'completed', 'closed']
+PhotoQuality = Literal['high', 'medium', 'low']
+EventPlan = Literal['BASIC', 'STANDARD', 'PRO']
+PaymentStatus = Literal['pending', 'partial', 'paid']
+OptimizationType = Literal['none', 'balanced', 'performance', 'high-quality']
+
+class FamilyMember(BaseModel):
+    id: str
+    name: str
+    relation: str
+    referencePhoto: Optional[str] = None
+
+class SubEvent(BaseModel):
+    id: str
+    name: str
+    date: datetime
+
+class User(MongoBaseModel):
+    email: str
+    name: str
+    role: UserRole = 'USER'
+    avatar: Optional[str] = None
+    familyMembers: List[FamilyMember] = []
+    subscriptionTier: SubscriptionTier = 'FREE'
+    subscriptionExpiry: Optional[datetime] = None
+    isActive: bool = True
+    joinDate: Optional[datetime] = Field(default_factory=datetime.now)
+    totalEventsCount: int = 0
+    totalPhotosCount: int = 0
+    totalUsersCount: int = 0
+
+class Event(MongoBaseModel):
+    name: str
+    date: datetime
+    photographerId: str
+    coverImage: str
+    photoCount: int = 0
+    assignedUsers: List[str] = []
+    subEvents: List[SubEvent] = []
+    status: EventStatus = 'active'
+    price: Optional[float] = 0.0
+    paidAmount: Optional[float] = 0.0
+    paymentStatus: PaymentStatus = 'pending'
+    plan: EventPlan = 'BASIC'
+    clientEmail: Optional[str] = None
+    clientPhone: Optional[str] = None
+    serviceFee: Optional[float] = 0.0
+    deadline: Optional[datetime] = None
+    optimizationSetting: OptimizationType = 'balanced'
+
+class Photo(MongoBaseModel):
+    url: str
+    eventId: str
+    tags: List[str] = []
+    people: List[str] = []
+    isAiPick: bool = False
+    quality: PhotoQuality = 'medium'
+    category: Optional[str] = None
+    subEventId: Optional[str] = None
+    isSelected: bool = False
+    isAiProcessed: bool = False
+    originalSize: Optional[int] = 0
+    optimizedSize: Optional[int] = 0
+
+class LoginRequest(BaseModel):
+    email: str
+
+class PaymentRequest(BaseModel):
+    amount: float
+
+# --- Startup/Seeding ---
+
+async def seed_data():
+    if await db.users.count_documents({}) > 0:
+        return
+    
+    print("Seeding Database...")
+    
+    # Create Admin
+    admin = User(
+        email="admin@photosort.com",
+        name="Admin User",
+        role="ADMIN",
+        avatar="https://ui-avatars.com/api/?name=Admin&background=000&color=fff"
+    )
+    res_admin = await db.users.insert_one(admin.model_dump(by_alias=True, exclude=["id"]))
+    
+    # Create Photographer
+    photographer = User(
+        email="photographer@photosort.com",
+        name="John Doe Studio",
+        role="PHOTOGRAPHER",
+        avatar="https://ui-avatars.com/api/?name=John+Doe&background=10B981&color=fff",
+        subscriptionTier="PRO",
+        subscriptionExpiry=datetime(2025, 12, 31),
+        totalEventsCount=1,
+        totalPhotosCount=12,
+        totalUsersCount=1
+    )
+    res_photog = await db.users.insert_one(photographer.model_dump(by_alias=True, exclude=["id"]))
+    photog_id = str(res_photog.inserted_id)
+
+    # Create User
+    client_user = User(
+        email="user@photosort.com",
+        name="Rohan & Priya",
+        role="USER",
+        avatar="https://ui-avatars.com/api/?name=Rohan+Priya&background=random"
+    )
+    res_client = await db.users.insert_one(client_user.model_dump(by_alias=True, exclude=["id"]))
+    client_id = str(res_client.inserted_id)
+
+    # Create Event
+    event_date = datetime.now()
+    event = Event(
+        name="Rohan Weds Priya - The Royal Wedding",
+        date=event_date,
+        photographerId=photog_id,
+        coverImage="https://images.unsplash.com/photo-1519741497674-611481863552?q=80&w=2070&auto=format&fit=crop",
+        photoCount=0,
+        assignedUsers=[client_id],
+        status='active',
+        price=150000,
+        paidAmount=75000,
+        paymentStatus='partial',
+        plan='PRO',
+        subEvents=[
+            SubEvent(id="se-1", name="Haldi", date=event_date),
+            SubEvent(id="se-2", name="Wedding", date=event_date),
+            SubEvent(id="se-3", name="Reception", date=event_date)
+        ]
+    )
+    await db.events.insert_one(event.model_dump(by_alias=True, exclude=["id"]))
+    print("Seeding Complete.")
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Pass the db instance to the seeding utility
-    await seed_data(db)
+    await seed_data()
     yield
 
 app = FastAPI(lifespan=lifespan)
@@ -56,6 +194,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Mount the uploads directory to serve images via HTTP
+app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 # --- Helpers ---
 
@@ -151,6 +292,30 @@ async def delete_event(id: str):
     await db.photos.delete_many({"eventId": id})
     return {"message": "Event deleted"}
 
+# --- Payment Handling ---
+@app.post("/api/events/{id}/payment", response_model=Event)
+async def record_payment(id: str, payload: PaymentRequest):
+    event = await db.events.find_one({"_id": ObjectId(id)})
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+    
+    current_paid = event.get("paidAmount", 0) or 0
+    new_paid = current_paid + payload.amount
+    total_price = event.get("price", 0) or 0
+    
+    status = "pending"
+    if new_paid >= total_price and total_price > 0:
+        status = "paid"
+    elif new_paid > 0:
+        status = "partial"
+        
+    await db.events.update_one(
+        {"_id": ObjectId(id)}, 
+        {"$set": {"paidAmount": new_paid, "paymentStatus": status}}
+    )
+    updated_event = await db.events.find_one({"_id": ObjectId(id)})
+    return updated_event
+
 # Photos
 @app.get("/api/events/{id}/photos", response_model=List[Photo])
 async def get_event_photos(id: str):
@@ -158,28 +323,63 @@ async def get_event_photos(id: str):
     return photos
 
 @app.post("/api/events/{id}/photos", response_model=List[Photo])
-async def upload_photos(id: str, payload: PhotoUploadRequest, background_tasks: BackgroundTasks):
-    photos_data = []
-    for p in payload.photos:
-        p_dict = p.model_dump(by_alias=True, exclude=["id"])
-        p_dict["eventId"] = id
-        p_dict["isAiProcessed"] = False # Reset for AI service
-        photos_data.append(p_dict)
+async def upload_photos(id: str, files: List[UploadFile] = File(...), background_tasks: BackgroundTasks = None):
+    """
+    Handles real file uploads:
+    1. Saves file to disk (uploads/ folder).
+    2. Creates DB entry with generated URL.
+    3. Triggers AI Service for metadata processing.
+    """
+    saved_photos = []
     
-    if not photos_data:
+    for file in files:
+        # Create unique filename
+        timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+        safe_filename = f"{timestamp}_{file.filename.replace(' ', '_')}"
+        file_path = UPLOAD_DIR / safe_filename
+        
+        # Save to disk
+        try:
+            with file_path.open("wb") as buffer:
+                shutil.copyfileobj(file.file, buffer)
+        except Exception as e:
+            print(f"Error saving file {safe_filename}: {e}")
+            continue
+            
+        # Create Photo URL pointing to the static mount
+        url = f"{BASE_URL}/uploads/{safe_filename}"
+        
+        # DB Object (AI Process flags initialized to False)
+        new_photo = {
+            "url": url,
+            "eventId": id,
+            "tags": [],
+            "people": [],
+            "isAiPick": False,
+            "quality": "medium",
+            "isSelected": False,
+            "isAiProcessed": False,
+            "originalSize": file.size if hasattr(file, 'size') else 0,
+            "optimizedSize": 0
+        }
+        saved_photos.append(new_photo)
+    
+    if not saved_photos:
         return []
 
-    result = await db.photos.insert_many(photos_data)
+    result = await db.photos.insert_many(saved_photos)
     
-    # Update event count
+    # Update event photo count
     count = await db.photos.count_documents({"eventId": id})
     await db.events.update_one({"_id": ObjectId(id)}, {"$set": {"photoCount": count}})
 
-    # Trigger AI Service
-    background_tasks.add_task(trigger_ai_service, id)
+    # Trigger AI Service (runs asynchronously)
+    if background_tasks:
+        background_tasks.add_task(trigger_ai_service, id)
 
-    # Fetch created photos
-    created_photos = await db.photos.find({"_id": {"$in": result.inserted_ids}}).to_list(None)
+    # Fetch created photos to return complete objects
+    ids = result.inserted_ids
+    created_photos = await db.photos.find({"_id": {"$in": ids}}).to_list(None)
     return created_photos
 
 @app.post("/api/photos/{id}/selection", response_model=Photo)

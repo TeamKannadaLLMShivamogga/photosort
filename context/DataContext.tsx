@@ -106,6 +106,7 @@ interface DataContextType {
   removeSubEvent: (eventId: string, subEventId: string) => void;
   toggleUserStatus: (userId: string) => void;
   refreshPhotos: () => Promise<void>;
+  recordPayment: (eventId: string, amount: number) => Promise<void>;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -368,12 +369,39 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const recordPayment = async (eventId: string, amount: number) => {
+    try {
+        const res = await fetch(`${API_URL}/events/${eventId}/payment`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ amount })
+        });
+        if (!res.ok) throw new Error("Payment record failed");
+        const updatedEvent = await res.json();
+        setEvents(prev => prev.map(e => e.id === eventId ? updatedEvent : e));
+        if (activeEvent?.id === eventId) setActiveEvent(updatedEvent);
+    } catch (e) {
+        console.warn("Backend unavailable. Updating payment locally.", e);
+        const event = events.find(e => e.id === eventId);
+        if (event) {
+            const newPaid = (event.paidAmount || 0) + amount;
+            const updated: Event = { 
+                ...event, 
+                paidAmount: newPaid, 
+                paymentStatus: newPaid >= (event.price || 0) ? 'paid' : 'partial' 
+            };
+            setEvents(prev => prev.map(e => e.id === eventId ? updated : e));
+            if (activeEvent?.id === eventId) setActiveEvent(updated);
+        }
+    }
+  };
+
   return (
     <DataContext.Provider value={{
       currentUser, users, events, photos, notifications, activeEvent, selectedPhotos,
       login, logout, setActiveEvent, togglePhotoSelection, submitSelections,
       addEvent, updateEvent, deleteEvent, addUser, updateUser, deleteUser, addSubEvent, removeSubEvent,
-      toggleUserStatus, refreshPhotos
+      toggleUserStatus, refreshPhotos, recordPayment
     }}>
       {children}
     </DataContext.Provider>
