@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { 
   Settings, Upload, Image as ImageIcon, CheckSquare, 
@@ -10,7 +11,8 @@ import GalleryView from '../../components/Gallery/GalleryView';
 import { SubEvent, Event, OptimizationType, Photo, UserRole } from '../../types';
 import { optimizeImage } from '../../utils/imageOptimizer';
 
-const API_URL = 'http://localhost:8000/api';
+// CHANGED: Relative API URL to use Vite Proxy
+const API_URL = '/api';
 
 const PhotographerEventDetail: React.FC<{ onNavigate: (view: string) => void, initialTab?: string }> = ({ onNavigate, initialTab }) => {
   const { activeEvent, updateEvent, photos, users, setActiveEvent, refreshPhotos, recordPayment } = useData();

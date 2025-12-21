@@ -1,7 +1,9 @@
+
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { User, UserRole, Event, Photo, Notification, SubEvent } from '../types';
 
-const API_URL = 'http://localhost:8000/api';
+// CHANGED: Use relative path to utilize Vite Proxy (solves CORS)
+const API_URL = '/api';
 
 interface DataContextType {
   currentUser: User | null;

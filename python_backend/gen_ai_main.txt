@@ -1,4 +1,3 @@
-
 """
 PhotoSort Pro - Gen AI Service (FastAPI)
 
@@ -212,9 +211,24 @@ def clean_json_response(response_text: str) -> str:
 async def qwen_process_photo(photo, event_subevents):
     """Uses Qwen-VL to analyze the photo."""
     try:
+        # Resolve file path
+        # If url is '/uploads/...' it is a local file relative to the project root
+        image_source = photo['url']
+        
+        # Handle full absolute URLs by stripping host (legacy data support)
+        if "http://localhost:8000" in image_source:
+            image_source = image_source.replace("http://localhost:8000", "")
+        if "http://0.0.0.0:8000" in image_source:
+            image_source = image_source.replace("http://0.0.0.0:8000", "")
+            
+        if image_source.startswith("/uploads"):
+             # Convert web path to system path (relative to CWD)
+             # e.g., /uploads/123/abc.jpg -> uploads/123/abc.jpg
+             image_source = image_source.lstrip("/") 
+        
         # Construct Query
         query = tokenizer.from_list_format([
-            {'image': photo['url']},
+            {'image': image_source},
             {'text': PROMPTS.get("analysis_prompt", "Describe this image in JSON.")}
         ])
         

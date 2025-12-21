@@ -2,14 +2,14 @@ import os
 import shutil
 import uuid
 from datetime import datetime
-from typing import List, Optional, Literal, Set
+from typing import List, Optional, Literal, Set, Union, Any, Dict
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Body, BackgroundTasks, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field, BeforeValidator, ConfigDict
+from pydantic import BaseModel, Field, BeforeValidator, ConfigDict, field_validator
 from motor.motor_asyncio import AsyncIOMotorClient
 from bson import ObjectId
 from typing_extensions import Annotated
@@ -22,7 +22,6 @@ load_dotenv()
 MONGO_URL = os.getenv("MONGODB_URL", "mongodb://localhost:27017")
 DB_NAME = "photosort"
 AI_SERVICE_URL = os.getenv("AI_SERVICE_URL", "http://localhost:8001")
-BASE_URL = "http://localhost:8000"
 
 client = AsyncIOMotorClient(MONGO_URL)
 db = client[DB_NAME]
@@ -110,6 +109,18 @@ class Photo(MongoBaseModel):
     isAiProcessed: bool = False
     originalSize: Optional[int] = 0
     optimizedSize: Optional[int] = 0
+    # Additional AI data
+    aiAnalysis: Optional[Dict[str, Any]] = None
+
+    # Handle legacy quality data (which might be a dict) and ensure URL is relative
+    @field_validator('quality', mode='before')
+    def parse_quality(cls, v):
+        if isinstance(v, dict):
+            # Fallback: if quality is detailed object, map to simple string
+            if v.get('sharp_subject') is True and not v.get('blurry'):
+                return 'high'
+            return 'medium'
+        return v
 
 class LoginRequest(BaseModel):
     email: str
@@ -329,14 +340,15 @@ async def get_event_photos(id: str):
 async def upload_photos(id: str, files: List[UploadFile] = File(...), background_tasks: BackgroundTasks = None):
     """
     Handles real file uploads:
-    1. Saves file to disk (uploads/ folder).
-    2. Creates DB entry with generated URL.
+    1. Saves file to disk in event-specific subfolder (uploads/{event_id}/).
+    2. Creates DB entry with relative URL (/uploads/{event_id}/{filename}).
     3. Triggers AI Service for metadata processing.
     """
     saved_photos = []
     
-    # Ensure directory exists
-    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    # Create event specific directory
+    event_upload_dir = UPLOAD_DIR / id
+    event_upload_dir.mkdir(parents=True, exist_ok=True)
     
     for file in files:
         # Create unique filename using UUID
@@ -345,7 +357,7 @@ async def upload_photos(id: str, files: List[UploadFile] = File(...), background
             file_ext = ".jpg"
             
         safe_filename = f"{uuid.uuid4()}{file_ext}"
-        file_path = UPLOAD_DIR / safe_filename
+        file_path = event_upload_dir / safe_filename
         
         # Save to disk using standard write for reliability
         try:
@@ -356,8 +368,10 @@ async def upload_photos(id: str, files: List[UploadFile] = File(...), background
             print(f"Error saving file {safe_filename}: {e}")
             continue
             
-        # Create Photo URL pointing to the static mount
-        url = f"{BASE_URL}/uploads/{safe_filename}"
+        # Store relative URL path. Frontend proxy will handle /uploads -> backend
+        # IMPORTANT: Store ONLY the relative path (e.g. /uploads/123/img.jpg)
+        # This prevents full 'http://localhost' paths in DB
+        url = f"/uploads/{id}/{safe_filename}"
         
         # DB Object (AI Process flags initialized to False)
         new_photo = {
