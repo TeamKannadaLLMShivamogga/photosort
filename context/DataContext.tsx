@@ -1,87 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { User, UserRole, Event, Photo, Notification, SubEvent, SubscriptionTier } from '../types';
+import { User, UserRole, Event, Photo, Notification, SubEvent } from '../types';
 
 const API_URL = 'http://localhost:8000/api';
-
-// --- MOCK DATA FOR OFFLINE FALLBACK ---
-const MOCK_USERS: User[] = [
-  {
-    id: "u1",
-    name: "Admin User",
-    email: "admin@photosort.com",
-    role: UserRole.ADMIN,
-    avatar: "https://ui-avatars.com/api/?name=Admin&background=000&color=fff",
-    isActive: true
-  },
-  {
-    id: "u2",
-    name: "John Doe Studio",
-    email: "photographer@photosort.com",
-    role: UserRole.PHOTOGRAPHER,
-    avatar: "https://ui-avatars.com/api/?name=John+Doe&background=10B981&color=fff",
-    subscriptionTier: SubscriptionTier.PRO,
-    subscriptionExpiry: "2025-12-31",
-    totalEventsCount: 1,
-    totalPhotosCount: 12,
-    totalUsersCount: 1,
-    isActive: true
-  },
-  {
-    id: "u3",
-    name: "Rohan & Priya",
-    email: "user@photosort.com",
-    role: UserRole.USER,
-    avatar: "https://ui-avatars.com/api/?name=Rohan+Priya&background=random",
-    isActive: true
-  }
-];
-
-const MOCK_EVENTS: Event[] = [
-  {
-    id: "e1",
-    name: "Rohan Weds Priya - The Royal Wedding",
-    date: new Date().toISOString(),
-    photographerId: "u2",
-    coverImage: "https://images.unsplash.com/photo-1519741497674-611481863552?q=80&w=2070&auto=format&fit=crop",
-    photoCount: 12,
-    assignedUsers: ["u3"],
-    status: 'active',
-    price: 150000,
-    paidAmount: 75000,
-    paymentStatus: 'partial',
-    plan: 'PRO' as any,
-    subEvents: [
-      { id: "se-1", name: "Haldi", date: new Date(Date.now() - 86400000).toISOString() },
-      { id: "se-2", name: "Wedding", date: new Date().toISOString() },
-      { id: "se-3", name: "Reception", date: new Date(Date.now() + 86400000).toISOString() }
-    ]
-  }
-];
-
-const MOCK_PHOTOS: Photo[] = [
-  "https://images.unsplash.com/photo-1606800052052-a08af7148866?q=80&w=2070",
-  "https://images.unsplash.com/photo-1511285560982-1351cdeb9821?q=80&w=2070",
-  "https://images.unsplash.com/photo-1515934751635-c81c6bc9a2d8?q=80&w=2070",
-  "https://images.unsplash.com/photo-1520854221256-17451cc330e7?q=80&w=2070",
-  "https://images.unsplash.com/photo-1621621667797-e06afc217fb0?q=80&w=2070",
-  "https://images.unsplash.com/photo-1532712938310-34cb3982ef74?q=80&w=2070",
-  "https://images.unsplash.com/photo-1522673607200-1645062cd958?q=80&w=2070",
-  "https://images.unsplash.com/photo-1529636721647-781d6605c91c?q=80&w=2070",
-  "https://images.unsplash.com/photo-1507915977619-6cc164e394b9?q=80&w=2070",
-  "https://images.unsplash.com/photo-1523438885200-e635ba2c371e?q=80&w=2070",
-  "https://images.unsplash.com/photo-1516975080664-ed2fc6a32937?q=80&w=2070",
-  "https://images.unsplash.com/photo-1542038784456-1ea8e935640e?q=80&w=2070"
-].map((url, index) => ({
-  id: `p-${index}`,
-  url,
-  eventId: "e1",
-  tags: index % 2 === 0 ? ["wedding", "happy"] : ["candid", "ceremony"],
-  people: index % 3 === 0 ? ["Rohan"] : ["Priya"],
-  isAiPick: index % 4 === 0,
-  quality: 'high',
-  category: index % 2 === 0 ? "Wedding" : "Haldi",
-  isSelected: false
-}));
 
 interface DataContextType {
   currentUser: User | null;
@@ -91,20 +11,21 @@ interface DataContextType {
   notifications: Notification[];
   activeEvent: Event | null;
   selectedPhotos: Set<string>;
-  login: (email: string) => void;
+  isLoading: boolean;
+  login: (email: string) => Promise<void>;
   logout: () => void;
   setActiveEvent: (event: Event | null) => void;
   togglePhotoSelection: (id: string) => void;
   submitSelections: () => void;
-  addEvent: (event: Partial<Event>) => void;
-  updateEvent: (event: Event) => void;
-  deleteEvent: (id: string) => void;
-  addUser: (user: Partial<User>) => void;
-  updateUser: (user: User) => void;
-  deleteUser: (id: string) => void;
+  addEvent: (event: Partial<Event>) => Promise<void>;
+  updateEvent: (event: Event) => Promise<void>;
+  deleteEvent: (id: string) => Promise<void>;
+  addUser: (user: Partial<User>) => Promise<void>;
+  updateUser: (user: User) => Promise<void>;
+  deleteUser: (id: string) => Promise<void>;
   addSubEvent: (eventId: string, subEvent: SubEvent) => void;
   removeSubEvent: (eventId: string, subEventId: string) => void;
-  toggleUserStatus: (userId: string) => void;
+  toggleUserStatus: (userId: string) => Promise<void>;
   refreshPhotos: () => Promise<void>;
   recordPayment: (eventId: string, amount: number, date?: string) => Promise<void>;
 }
@@ -119,6 +40,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [activeEvent, _setActiveEvent] = useState<Event | null>(null);
   const [selectedPhotos, setSelectedPhotos] = useState<Set<string>>(new Set());
+  const [isLoading, setIsLoading] = useState(true);
 
   // Wrapper to persist active event
   const setActiveEvent = (event: Event | null) => {
@@ -142,7 +64,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Initialize and Fetch Initial Data
   useEffect(() => {
     const fetchData = async () => {
-      // 1. Optimistic Restore
+      setIsLoading(true);
+      
+      // 1. Optimistic Restore of User Session (just to prevent UI flicker, validated later)
       const storedUser = localStorage.getItem('photoSortUser');
       if (storedUser) {
           try { setCurrentUser(JSON.parse(storedUser)); } catch (e) { console.error("Failed to parse stored user", e); }
@@ -165,8 +89,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const eventsData = Array.isArray(rawEventsData) ? rawEventsData.map(normalizeData) : [];
 
         console.log(`%c[DB Connected] Loaded ${usersData.length} Users and ${eventsData.length} Events`, 'color: #10B981; font-weight: bold;');
-        console.log("Raw Events Data Sample:", eventsData[0]);
-
+        
         setUsers(usersData);
         setEvents(eventsData);
 
@@ -178,6 +101,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             if (freshUser) {
                 setCurrentUser(freshUser);
                 localStorage.setItem('photoSortUser', JSON.stringify(freshUser));
+            } else {
+                // User from local storage no longer exists in DB
+                logout();
             }
         }
 
@@ -187,16 +113,17 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             const rehydratedEvent = eventsData.find((e: Event) => e.id === storedEventId);
             if (rehydratedEvent) {
                 _setActiveEvent(rehydratedEvent);
+            } else {
+                _setActiveEvent(null);
+                localStorage.removeItem('photoSortActiveEventId');
             }
         }
 
       } catch (error) {
         console.error("Backend Connection Failed:", error);
-        console.warn("Switching to OFFLINE MODE with MOCK DATA.");
-        
-        // Fallback to mock data
-        setUsers(MOCK_USERS);
-        setEvents(MOCK_EVENTS);
+        // Do not set mock data. Leave arrays empty so user sees connection error state or empty state.
+      } finally {
+        setIsLoading(false);
       }
     };
     fetchData();
@@ -216,16 +143,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const selected = new Set(data.filter((p: Photo) => p.isSelected).map((p: Photo) => p.id));
         setSelectedPhotos(selected);
       } catch (err) {
-        console.warn("Failed to load photos. Using offline photos if matching ID found.", err);
-        // Only fallback to mock if the Event ID matches the Mock Event ID to avoid confusing data
-        if (eventId === "e1") {
-            const mockPhotos = MOCK_PHOTOS.filter(p => p.eventId === eventId);
-            setPhotos(mockPhotos);
-            const selected = new Set(mockPhotos.filter((p) => p.isSelected).map((p) => p.id));
-            setSelectedPhotos(selected);
-        } else {
-            setPhotos([]); // Clear photos if backend fails and it's a real event
-        }
+        console.error("Failed to load photos from DB:", err);
+        setPhotos([]); // Ensure no stale data
       }
   };
 
@@ -251,7 +170,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email })
       });
-      if (!res.ok) throw new Error("Login failed");
+      
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || "Login failed");
+      }
+
       const rawUser = await res.json();
       const user = normalizeData(rawUser);
 
@@ -269,29 +193,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             return prev;
         });
       }
-    } catch (err) {
-      console.warn("Backend Login failed. Trying offline login.", err);
-      const user = users.find(u => u.email === email);
-      if (user) {
-        if (user.isActive === false && user.role === UserRole.PHOTOGRAPHER) {
-            alert("Your account has been disabled by the administrator.");
-            return;
-        }
-        setCurrentUser(user);
-        localStorage.setItem('photoSortUser', JSON.stringify(user));
-      } else {
-          // Create dummy user for offline mode
-          const newUser: User = {
-              id: `u-${Date.now()}`,
-              email,
-              name: email.split('@')[0],
-              role: UserRole.USER,
-              avatar: `https://ui-avatars.com/api/?name=${email}&background=random`
-          };
-          setCurrentUser(newUser);
-          setUsers(prev => [...prev, newUser]);
-          localStorage.setItem('photoSortUser', JSON.stringify(newUser));
-      }
+    } catch (err: any) {
+      console.error("Login Error:", err);
+      alert(`Login failed: ${err.message || "Could not connect to server"}`);
     }
   };
 
@@ -315,19 +219,22 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       await fetch(`${API_URL}/photos/${id}/selection`, { method: 'POST' });
     } catch (e) {
-      console.warn("Backend unavailable, selection saved locally.");
+      console.error("Failed to sync selection with backend", e);
+      // We don't revert optimistic update here to keep UI snappy, but in a real app you might want to show a toast
     }
   };
 
   const submitSelections = async () => {
     if (!activeEvent) return;
     try {
-        await fetch(`${API_URL}/events/${activeEvent.id}/submit-selections`, { method: 'POST' });
+        const res = await fetch(`${API_URL}/events/${activeEvent.id}/submit-selections`, { method: 'POST' });
+        if (!res.ok) throw new Error("Failed to submit");
+        alert(`Successfully submitted selections for ${activeEvent.name}!`);
+        setSelectedPhotos(new Set());
     } catch (e) {
-        console.warn("Backend unavailable, selections considered submitted locally.");
+        console.error("Submission failed", e);
+        alert("Failed to submit selections. Please check your connection.");
     }
-    alert(`Successfully submitted selections for ${activeEvent.name}!`);
-    setSelectedPhotos(new Set());
   };
 
   const addEvent = async (eventData: Partial<Event>) => {
@@ -341,16 +248,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const newEvent = normalizeData(await res.json());
       setEvents(prev => [...prev, newEvent]);
     } catch (err) {
-      console.warn("Backend unavailable. Adding event locally.");
-      const newEvent: Event = {
-          ...eventData,
-          id: `e-${Date.now()}`,
-          photoCount: 0,
-          assignedUsers: [],
-          subEvents: eventData.subEvents || [{ id: `se-${Date.now()}`, name: "Main Event", date: eventData.date || new Date().toISOString() }],
-          status: 'active'
-      } as Event;
-      setEvents(prev => [...prev, newEvent]);
+      console.error("Add Event Failed:", err);
+      alert("Failed to create event. Server may be unreachable.");
     }
   };
 
@@ -361,24 +260,27 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updated)
       });
-      if (!res.ok) throw new Error("Failed");
+      if (!res.ok) throw new Error("Failed to update event");
       const saved = normalizeData(await res.json());
       setEvents(prev => prev.map(e => e.id === saved.id ? saved : e));
       if (activeEvent?.id === saved.id) setActiveEvent(saved);
     } catch (err) { 
-        console.warn("Backend unavailable. Updating event locally.");
-        setEvents(prev => prev.map(e => e.id === updated.id ? updated : e));
-        if (activeEvent?.id === updated.id) setActiveEvent(updated);
+        console.error("Update Event Failed:", err);
+        alert("Failed to update event details.");
     }
   };
 
   const deleteEvent = async (id: string) => {
     try {
-        await fetch(`${API_URL}/events/${id}`, { method: 'DELETE' });
-    } catch (e) { console.warn("Backend unavailable. Deleting locally."); }
-    
-    setEvents(prev => prev.filter(e => e.id !== id));
-    if (activeEvent?.id === id) setActiveEvent(null);
+        const res = await fetch(`${API_URL}/events/${id}`, { method: 'DELETE' });
+        if (!res.ok) throw new Error("Failed to delete");
+        
+        setEvents(prev => prev.filter(e => e.id !== id));
+        if (activeEvent?.id === id) setActiveEvent(null);
+    } catch (e) { 
+        console.error("Delete Event Failed:", e);
+        alert("Failed to delete event.");
+    }
   };
 
   const addUser = async (userData: Partial<User>) => {
@@ -392,9 +294,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const newUser = normalizeData(await res.json());
         setUsers(prev => [...prev, newUser]);
     } catch (e) {
-        console.warn("Backend unavailable. Adding user locally.");
-        const newUser = { ...userData, id: `u-${Date.now()}`, isActive: true } as User;
-        setUsers(prev => [...prev, newUser]);
+        console.error("Add User Failed:", e);
     }
   };
 
@@ -413,20 +313,18 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             localStorage.setItem('photoSortUser', JSON.stringify(saved));
         }
     } catch(e) {
-        console.warn("Backend unavailable. Updating user locally.");
-        setUsers(prev => prev.map(u => u.id === updatedUser.id ? updatedUser : u));
-        if (currentUser?.id === updatedUser.id) {
-            setCurrentUser(updatedUser);
-            localStorage.setItem('photoSortUser', JSON.stringify(updatedUser));
-        }
+        console.error("Update User Failed:", e);
+        alert("Failed to update user profile.");
     }
   };
 
   const deleteUser = async (id: string) => {
     try {
         await fetch(`${API_URL}/users/${id}`, { method: 'DELETE' });
-    } catch (e) { console.warn("Backend unavailable. Deleting user locally."); }
-    setUsers(prev => prev.filter(u => u.id !== id));
+        setUsers(prev => prev.filter(u => u.id !== id));
+    } catch (e) { 
+        console.error("Delete User Failed:", e); 
+    }
   };
 
   const addSubEvent = (eventId: string, subEvent: SubEvent) => {
@@ -450,8 +348,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const data = normalizeData(await res.json());
         setUsers(prev => prev.map(u => u.id === userId ? { ...u, isActive: data.isActive } : u));
     } catch (e) {
-        console.warn("Backend unavailable. Toggling status locally.");
-        setUsers(prev => prev.map(u => u.id === userId ? { ...u, isActive: !u.isActive } : u));
+        console.error("Toggle Status Failed:", e);
     }
   };
 
@@ -467,24 +364,14 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setEvents(prev => prev.map(e => e.id === eventId ? updatedEvent : e));
         if (activeEvent?.id === eventId) setActiveEvent(updatedEvent);
     } catch (e) {
-        console.warn("Backend unavailable. Updating payment locally.", e);
-        const event = events.find(e => e.id === eventId);
-        if (event) {
-            const newPaid = (event.paidAmount || 0) + amount;
-            const updated: Event = { 
-                ...event, 
-                paidAmount: newPaid, 
-                paymentStatus: newPaid >= (event.price || 0) ? 'paid' : 'partial' 
-            };
-            setEvents(prev => prev.map(e => e.id === eventId ? updated : e));
-            if (activeEvent?.id === eventId) setActiveEvent(updated);
-        }
+        console.error("Record Payment Failed:", e);
+        alert("Failed to record payment.");
     }
   };
 
   return (
     <DataContext.Provider value={{
-      currentUser, users, events, photos, notifications, activeEvent, selectedPhotos,
+      currentUser, users, events, photos, notifications, activeEvent, selectedPhotos, isLoading,
       login, logout, setActiveEvent, togglePhotoSelection, submitSelections,
       addEvent, updateEvent, deleteEvent, addUser, updateUser, deleteUser, addSubEvent, removeSubEvent,
       toggleUserStatus, refreshPhotos, recordPayment
