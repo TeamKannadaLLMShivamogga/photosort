@@ -6,15 +6,19 @@ import {
 } from 'recharts';
 import { 
   TrendingUp, Star, Users, CheckCircle2, 
-  Calendar, Camera, Clock, ArrowRight, Image as ImageIcon, Sparkles, Smile, Users as GroupIcon, Heart, CreditCard
+  Calendar, Camera, Clock, ArrowRight, Image as ImageIcon, Sparkles, Smile, Users as GroupIcon, Heart, CreditCard, RefreshCw
 } from 'lucide-react';
 import { useData } from '../../context/DataContext';
 import EventSelector from './EventSelector';
 
 const COLORS = ['#6366f1', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981'];
 
-const UserDashboard: React.FC = () => {
-  const { activeEvent, photos, selectedPhotos } = useData();
+interface UserDashboardProps {
+  onNavigate: (view: string, params?: any) => void;
+}
+
+const UserDashboard: React.FC<UserDashboardProps> = ({ onNavigate }) => {
+  const { activeEvent, photos, selectedPhotos, setActiveEvent } = useData();
 
   if (!activeEvent) {
     return <EventSelector embedded />;
@@ -44,29 +48,69 @@ const UserDashboard: React.FC = () => {
   return (
     <div className="space-y-8 animate-in fade-in duration-500 max-w-7xl mx-auto">
       {/* Dashboard Header */}
-      <div className="flex items-center gap-5">
-        <div className="w-20 h-20 rounded-[2rem] overflow-hidden shadow-2xl border-4 border-white">
-          <img src={activeEvent.coverImage} className="w-full h-full object-cover" alt="" />
-        </div>
-        <div>
-          <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">{activeEvent.name}</h1>
-          <div className="flex items-center gap-2 mt-1 text-slate-400 font-bold text-sm">
-            <span>{new Date(activeEvent.date).toLocaleDateString()}</span>
-            <span className="w-1.5 h-1.5 bg-slate-200 rounded-full" />
-            <span>{activeEvent.photoCount} photos</span>
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-5">
+        <div className="flex items-center gap-5">
+          <div className="w-20 h-20 rounded-[2rem] overflow-hidden shadow-2xl border-4 border-white">
+            <img src={activeEvent.coverImage} className="w-full h-full object-cover" alt="" />
+          </div>
+          <div>
+            <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">{activeEvent.name}</h1>
+            <div className="flex items-center gap-2 mt-1 text-slate-400 font-bold text-sm">
+              <span>{new Date(activeEvent.date).toLocaleDateString()}</span>
+              <span className="w-1.5 h-1.5 bg-slate-200 rounded-full" />
+              <span>{activeEvent.photoCount} photos</span>
+            </div>
           </div>
         </div>
+        <button 
+          onClick={() => setActiveEvent(null)}
+          className="flex items-center gap-2 px-4 py-2 bg-white text-slate-600 hover:text-indigo-600 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-all text-xs font-black uppercase tracking-widest"
+        >
+          <RefreshCw className="w-4 h-4" /> Change Event
+        </button>
       </div>
 
       {/* Primary Stat Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {[
-          { label: 'Total Photos', value: eventPhotos.length, icon: ImageIcon, color: 'text-indigo-600', bg: 'bg-indigo-50/50' },
-          { label: 'AI Picks', value: aiPicks.length, icon: Sparkles, color: 'text-purple-600', bg: 'bg-purple-50/50' },
-          { label: 'High Quality', value: highQuality.length, icon: Star, color: 'text-emerald-600', bg: 'bg-emerald-50/50' },
-          { label: 'People Detected', value: peopleCount, icon: GroupIcon, color: 'text-blue-600', bg: 'bg-blue-50/50' },
+          { 
+            label: 'Total Photos', 
+            value: eventPhotos.length, 
+            icon: ImageIcon, 
+            color: 'text-indigo-600', 
+            bg: 'bg-indigo-50/50',
+            onClick: () => onNavigate('gallery', { tab: 'all' })
+          },
+          { 
+            label: 'AI Picks', 
+            value: aiPicks.length, 
+            icon: Sparkles, 
+            color: 'text-purple-600', 
+            bg: 'bg-purple-50/50',
+            onClick: () => onNavigate('gallery', { tab: 'ai' })
+          },
+          { 
+            label: 'High Quality', 
+            value: highQuality.length, 
+            icon: Star, 
+            color: 'text-emerald-600', 
+            bg: 'bg-emerald-50/50',
+            onClick: () => onNavigate('gallery', { tab: 'all' }) 
+          },
+          { 
+            label: 'People Detected', 
+            value: peopleCount, 
+            icon: GroupIcon, 
+            color: 'text-blue-600', 
+            bg: 'bg-blue-50/50',
+            onClick: () => onNavigate('gallery', { tab: 'people' })
+          },
         ].map((stat, i) => (
-          <div key={i} className="bg-white p-8 rounded-[2rem] border border-slate-100 shadow-sm flex items-center justify-between group hover:shadow-md transition-all">
+          <button 
+            key={i} 
+            onClick={stat.onClick}
+            className="bg-white p-8 rounded-[2rem] border border-slate-100 shadow-sm flex items-center justify-between group hover:shadow-xl hover:scale-[1.02] transition-all cursor-pointer text-left w-full"
+          >
             <div className="space-y-1">
               <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">{stat.label}</p>
               <p className="text-4xl font-black text-slate-900">{stat.value}</p>
@@ -74,7 +118,7 @@ const UserDashboard: React.FC = () => {
             <div className={`w-14 h-14 rounded-2xl flex items-center justify-center ${stat.bg} ${stat.color} group-hover:scale-110 transition-transform`}>
               <stat.icon className="w-7 h-7" />
             </div>
-          </div>
+          </button>
         ))}
       </div>
 
@@ -165,18 +209,21 @@ const UserDashboard: React.FC = () => {
           </div>
 
           {/* Quick Action */}
-          <div className="bg-slate-900 p-8 rounded-[2.5rem] text-white relative overflow-hidden group">
+          <button 
+            onClick={() => onNavigate('gallery', { tab: 'all' })}
+            className="bg-slate-900 p-8 rounded-[2.5rem] text-white relative overflow-hidden group w-full text-left"
+          >
             <div className="relative z-10 space-y-4">
               <h4 className="text-2xl font-bold leading-tight">Ready to curate your album?</h4>
               <p className="text-slate-400 text-sm leading-relaxed">Your selection process is 100% synchronized with your photographer's workflow.</p>
-              <button className="bg-[#10B981] text-white px-8 py-3 rounded-2xl font-bold text-sm hover:bg-[#059669] transition-all flex items-center gap-2 group-hover:scale-105">
+              <div className="bg-[#10B981] text-white px-8 py-3 rounded-2xl font-bold text-sm hover:bg-[#059669] transition-all inline-flex items-center gap-2 group-hover:scale-105">
                 Go to Gallery <ArrowRight className="w-4 h-4" />
-              </button>
+              </div>
             </div>
             <div className="absolute -right-8 -bottom-8 opacity-10 group-hover:rotate-12 transition-transform">
                <ImageIcon className="w-48 h-48" />
             </div>
-          </div>
+          </button>
         </div>
       </div>
     </div>

@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   Grid2X2, Sparkles, User, Calendar, Tag, Check, Filter, 
   X, ChevronRight, Star, CheckCircle2, Image as ImageIcon, RotateCcw
@@ -9,7 +9,11 @@ import { Photo } from '../../types';
 
 type TabType = 'all' | 'ai' | 'people' | 'ceremony' | 'activity';
 
-const GalleryView: React.FC = () => {
+interface GalleryViewProps {
+  initialTab?: string;
+}
+
+const GalleryView: React.FC<GalleryViewProps> = ({ initialTab }) => {
   const { photos, activeEvent, selectedPhotos, togglePhotoSelection, submitSelections } = useData();
   const [activeTab, setActiveTab] = useState<TabType>('all');
   const [selectedFilters, setSelectedFilters] = useState<{
@@ -22,6 +26,14 @@ const GalleryView: React.FC = () => {
     activity: []
   });
   const [isModalOpen, setIsModalOpen] = useState(false);
+
+  useEffect(() => {
+    if (initialTab) {
+      if (['all', 'ai', 'people', 'ceremony', 'activity'].includes(initialTab)) {
+        setActiveTab(initialTab as TabType);
+      }
+    }
+  }, [initialTab]);
 
   const eventPhotos = useMemo(() => 
     photos.filter(p => p.eventId === activeEvent?.id),
