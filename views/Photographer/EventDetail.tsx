@@ -389,43 +389,48 @@ const PhotographerEventDetail: React.FC<{ onNavigate: (view: string) => void, in
                     {/* Actions based on Status */}
                     <div className="p-6 bg-slate-50 rounded-3xl border border-slate-200 space-y-4">
                         {activeEvent.selectionStatus === 'submitted' && (
-                            <div className="flex gap-4">
+                            <div className="flex flex-col sm:flex-row gap-4">
                                 <div className="flex-1 space-y-2">
                                     <h4 className="font-bold text-slate-900">Client Selection Submitted</h4>
                                     <p className="text-xs text-slate-500">Selections are locked. Review them or start editing.</p>
                                 </div>
-                                <button 
-                                    onClick={() => handleWorkflowChange('open')}
-                                    className="px-6 py-3 bg-white border border-slate-200 text-slate-600 rounded-xl text-xs font-black uppercase tracking-widest hover:border-red-200 hover:text-red-500 flex items-center gap-2"
-                                >
-                                    <Unlock className="w-4 h-4" /> Unlock
-                                </button>
-                                <div className="flex flex-col gap-2">
-                                    <input 
-                                        type="date" 
-                                        className="px-4 py-2 rounded-xl border border-slate-200 text-xs" 
-                                        onChange={(e) => setDeliveryDate(e.target.value)}
-                                    />
+                                <div className="flex items-end gap-3">
                                     <button 
-                                        onClick={() => handleWorkflowChange('editing')}
-                                        disabled={!deliveryDate}
-                                        className="px-6 py-3 bg-[#10B981] text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-[#059669] disabled:opacity-50"
+                                        onClick={() => handleWorkflowChange('open')}
+                                        className="px-6 py-3 bg-white border border-slate-200 text-slate-600 rounded-xl text-xs font-black uppercase tracking-widest hover:border-red-200 hover:text-red-500 flex items-center gap-2 transition-all"
                                     >
-                                        Start Editing
+                                        <Unlock className="w-4 h-4" /> Unlock Selection
                                     </button>
+                                    <div className="flex flex-col gap-2">
+                                        <label className="text-[9px] font-bold text-slate-400 uppercase">Target Delivery Date</label>
+                                        <div className="flex gap-2">
+                                            <input 
+                                                type="date" 
+                                                className="px-4 py-2 rounded-xl border border-slate-200 text-xs outline-none" 
+                                                onChange={(e) => setDeliveryDate(e.target.value)}
+                                            />
+                                            <button 
+                                                onClick={() => handleWorkflowChange('editing')}
+                                                disabled={!deliveryDate}
+                                                className="px-6 py-3 bg-[#10B981] text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-[#059669] disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                                            >
+                                                Start Editing
+                                            </button>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         )}
 
                         {activeEvent.selectionStatus === 'editing' && (
-                            <div className="flex gap-4 items-center justify-between">
+                            <div className="flex flex-col sm:flex-row gap-4 items-center justify-between">
                                 <div>
                                     <h4 className="font-bold text-slate-900">Editing In Progress</h4>
                                     <p className="text-xs text-slate-500">Estimated Delivery: {activeEvent.timeline?.deliveryEstimate ? new Date(activeEvent.timeline.deliveryEstimate).toLocaleDateString() : 'N/A'}</p>
                                 </div>
                                 <button 
                                     onClick={() => handleWorkflowChange('review')}
-                                    className="px-6 py-3 bg-indigo-600 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-indigo-700 flex items-center gap-2"
+                                    className="px-6 py-3 bg-indigo-600 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-indigo-700 flex items-center gap-2 transition-all"
                                 >
                                     <Send className="w-4 h-4" /> Submit for Review
                                 </button>
@@ -443,7 +448,15 @@ const PhotographerEventDetail: React.FC<{ onNavigate: (view: string) => void, in
                         )}
                         
                         {activeEvent.selectionStatus === 'open' && (
-                            <p className="text-center text-xs font-bold text-slate-400 uppercase tracking-widest">Waiting for client submission...</p>
+                            <div className="text-center py-8">
+                                <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Waiting for client submission...</p>
+                                <button 
+                                    onClick={() => handleWorkflowChange('submitted')}
+                                    className="mt-4 px-6 py-2 bg-slate-100 text-slate-500 rounded-lg text-[10px] font-bold uppercase hover:bg-slate-200"
+                                >
+                                    Force Submit (Manual Override)
+                                </button>
+                            </div>
                         )}
                     </div>
                 </div>

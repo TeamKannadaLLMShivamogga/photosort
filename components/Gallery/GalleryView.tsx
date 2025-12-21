@@ -40,6 +40,19 @@ const GalleryView: React.FC<GalleryViewProps> = ({ initialTab }) => {
     [photos, activeEvent]
   );
 
+  // Calculate Sub-Event Counts
+  const subEventCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    activeEvent?.subEvents.forEach(se => {
+        // Count photos that match subEventId OR fallback to category name match
+        counts[se.name] = eventPhotos.filter(p =>
+            (p.subEventId && p.subEventId === se.id) ||
+            (!p.subEventId && p.category === se.name)
+        ).length;
+    });
+    return counts;
+  }, [eventPhotos, activeEvent]);
+
   const filterOptions = useMemo(() => ({
     people: Array.from(new Set(eventPhotos.flatMap(p => p.people))),
     ceremony: activeEvent?.subEvents.map(s => s.name) || [],
@@ -65,7 +78,6 @@ const GalleryView: React.FC<GalleryViewProps> = ({ initialTab }) => {
     }
     // Filter by Sub-Event (Ceremony)
     if (selectedFilters.ceremony.length > 0) {
-      // Logic updates: match against subEventId if available, fallback to category name match
       result = result.filter(p => {
           const subEvent = activeEvent?.subEvents.find(s => selectedFilters.ceremony.includes(s.name));
           return (p.subEventId && subEvent && p.subEventId === subEvent.id) || (p.category && selectedFilters.ceremony.includes(p.category));
@@ -91,7 +103,7 @@ const GalleryView: React.FC<GalleryViewProps> = ({ initialTab }) => {
     { id: 'all', label: 'All', icon: Grid2X2 },
     { id: 'ai', label: 'AI', icon: Sparkles },
     { id: 'people', label: 'People', icon: User },
-    { id: 'ceremony', label: 'Sub-Events', icon: Calendar }, // Renamed from Ceremony
+    { id: 'ceremony', label: 'Sub-Events', icon: Calendar }, 
     { id: 'activity', label: 'Activity', icon: Tag },
   ];
 
@@ -125,7 +137,7 @@ const GalleryView: React.FC<GalleryViewProps> = ({ initialTab }) => {
           ))}
         </div>
 
-        {/* Improved Filter Chips with Thumbnails */}
+        {/* Improved Filter Chips with Thumbnails and Counts */}
         {activeTab !== 'all' && activeTab !== 'ai' && (
           <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-1 border-t border-slate-50 mt-0.5 -mx-4 px-4">
             {filterOptions[activeTab as keyof typeof filterOptions].slice(0, 8).map(val => (
@@ -150,6 +162,14 @@ const GalleryView: React.FC<GalleryViewProps> = ({ initialTab }) => {
                   </div>
                 )}
                 <span>{val}</span>
+                
+                {/* Count Display for Sub-Events */}
+                {activeTab === 'ceremony' && (
+                    <span className={`text-[9px] font-bold ${selectedFilters.ceremony.includes(val) ? 'text-indigo-400' : 'text-slate-400'}`}>
+                        ({subEventCounts[val] || 0})
+                    </span>
+                )}
+
                 {selectedFilters[activeTab as keyof typeof selectedFilters].includes(val) && <X className="w-2.5 h-2.5" />}
               </button>
             ))}
@@ -251,6 +271,9 @@ const GalleryView: React.FC<GalleryViewProps> = ({ initialTab }) => {
                         )}
                       </div>
                       <span className="text-[10px] font-bold text-center truncate w-full">{val}</span>
+                      {activeTab === 'ceremony' && (
+                        <span className="text-[9px] font-bold text-slate-400">({subEventCounts[val] || 0})</span>
+                      )}
                     </button>
                   );
                 })}
