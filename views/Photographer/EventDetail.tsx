@@ -4,18 +4,23 @@ import {
   Settings, Upload, Image as ImageIcon, CheckSquare, 
   Share2, X, Clock, Download, FileJson, Calendar, ChevronLeft, Loader2,
   Edit2, Zap, ShieldCheck, FileType, Sparkles, Wand2, CreditCard, ChevronDown, FolderOpen,
-  Database, Activity, Plus, Users, Trash2
+  Database, Activity, Plus, Users, Trash2, GitPullRequest, Lock, Unlock, Send, MessageCircle
 } from 'lucide-react';
 import { useData } from '../../context/DataContext';
 import GalleryView from '../../components/Gallery/GalleryView';
-import { SubEvent, Event, OptimizationType, Photo, UserRole } from '../../types';
+import { SubEvent, Event, OptimizationType, Photo, UserRole, SelectionStatus } from '../../types';
 import { optimizeImage } from '../../utils/imageOptimizer';
 
 // CHANGED: Relative API URL to use Vite Proxy
 const API_URL = '/api';
 
 const PhotographerEventDetail: React.FC<{ onNavigate: (view: string) => void, initialTab?: string }> = ({ onNavigate, initialTab }) => {
-  const { activeEvent, updateEvent, photos, users, setActiveEvent, refreshPhotos, recordPayment, assignUserToEvent, removeUserFromEvent } = useData();
+  const { 
+    activeEvent, updateEvent, photos, users, setActiveEvent, refreshPhotos, 
+    recordPayment, assignUserToEvent, removeUserFromEvent, addSubEvent, updateEventWorkflow,
+    uploadEditedPhoto, addPhotoComment
+  } = useData();
+  
   const [activeTab, setActiveTab] = useState<string>(initialTab || 'settings');
   
   const [isEditDetailsOpen, setIsEditDetailsOpen] = useState(false);
@@ -29,6 +34,11 @@ const PhotographerEventDetail: React.FC<{ onNavigate: (view: string) => void, in
   const [paymentAmount, setPaymentAmount] = useState<string>('');
   const [paymentDate, setPaymentDate] = useState<string>(new Date().toISOString().split('T')[0]);
 
+  // Upload State
+  const [selectedSubEvent, setSelectedSubEvent] = useState<string>('');
+  const [isSubEventModalOpen, setIsSubEventModalOpen] = useState(false);
+  const [newSubEvent, setNewSubEvent] = useState({ name: '', date: '', endDate: '' });
+
   // Optimization State
   const [useOptimization, setUseOptimization] = useState(true);
   const [optLevel, setOptLevel] = useState<OptimizationType>(activeEvent?.optimizationSetting || 'balanced');
@@ -40,10 +50,16 @@ const PhotographerEventDetail: React.FC<{ onNavigate: (view: string) => void, in
   const [currentFileName, setCurrentFileName] = useState('');
   const [stats, setStats] = useState({ savedSize: 0, processedCount: 0, totalCount: 0 });
 
+  // Workflow State
+  const [deliveryDate, setDeliveryDate] = useState('');
+
   useEffect(() => {
     if (activeEvent) {
       setEditForm(activeEvent);
       setOptLevel(activeEvent.optimizationSetting || 'balanced');
+      if (activeEvent.subEvents.length > 0) {
+          setSelectedSubEvent(activeEvent.subEvents[0].id);
+      }
     }
   }, [activeEvent]);
 
@@ -79,15 +95,35 @@ const PhotographerEventDetail: React.FC<{ onNavigate: (view: string) => void, in
       }
   };
 
+  const handleCreateSubEvent = async () => {
+      if(newSubEvent.name && newSubEvent.date) {
+          await addSubEvent(activeEvent.id, {
+              id: '',
+              ...newSubEvent
+          });
+          setIsSubEventModalOpen(false);
+          setNewSubEvent({ name: '', date: '', endDate: '' });
+      }
+  };
+
+  const handleWorkflowChange = async (status: SelectionStatus) => {
+      await updateEventWorkflow(activeEvent.id, status, deliveryDate || undefined);
+  };
+
   const tabs = [
     { id: 'settings', label: 'Settings', icon: Settings },
-    { id: 'upload', label: 'Upload & View', icon: Upload },
-    { id: 'sorted', label: 'Sorted Photos', icon: ImageIcon },
+    { id: 'workflow', label: 'Workflow', icon: GitPullRequest },
+    { id: 'upload', label: 'Upload', icon: Upload },
+    { id: 'sorted', label: 'Gallery', icon: ImageIcon },
     { id: 'selections', label: 'Selections', icon: CheckSquare },
-    { id: 'share', label: 'Share & Close', icon: Share2 },
   ];
 
   const handleRealUpload = async (files: FileList) => {
+    if (!selectedSubEvent) {
+        alert("Please select a sub-event first.");
+        return;
+    }
+
     setIsUploading(true);
     setUploadProgress(0);
     setStats({ savedSize: 0, processedCount: 0, totalCount: 0 });
@@ -102,10 +138,9 @@ const PhotographerEventDetail: React.FC<{ onNavigate: (view: string) => void, in
     
     setStats(s => ({ ...s, totalCount: totalFiles }));
 
-    // Use FormData to send actual files
     const formData = new FormData();
+    formData.append('subEventId', selectedSubEvent); // Send SubEvent ID
 
-    // Stage 1 & 2: Client-side optimization (simulated delay or real processing)
     setUploadStage('optimizing');
     let totalSavedBytes = 0;
 
@@ -113,45 +148,33 @@ const PhotographerEventDetail: React.FC<{ onNavigate: (view: string) => void, in
         const file = fileArray[i];
         setCurrentFileName(file.name);
         
-        // Note: For now we are sending original files to server to ensure high quality storage
-        // Client side optimization is visually simulated here but we append the original
-        // In a full implementation, you'd replace 'file' with the blob from optimizeImage
-        
         if (useOptimization) {
            // const result = await optimizeImage(file, optLevel); 
-           // totalSavedBytes += (result.originalSize - result.optimizedSize);
            // formData.append('files', result.blob, file.name); 
-           
-           // Using original for simplicity in this demo step, assuming server handles it
            formData.append('files', file); 
-           await new Promise(r => setTimeout(r, 20)); // Small visual delay
+           await new Promise(r => setTimeout(r, 20)); 
         } else {
            formData.append('files', file);
         }
         
         setStats(s => ({ ...s, processedCount: i + 1, savedSize: totalSavedBytes }));
-        setUploadProgress(Math.round(((i + 1) / totalFiles) * 50)); // First 50% is preparation
+        setUploadProgress(Math.round(((i + 1) / totalFiles) * 50)); 
     }
 
-    // Stage 3: Uploading to Backend
     setUploadStage('uploading');
     setCurrentFileName('Sending data to server...');
     
     try {
         const response = await fetch(`${API_URL}/events/${activeEvent.id}/photos`, {
             method: 'POST',
-            body: formData, // No Content-Type header, browser sets it with boundary
+            body: formData, 
         });
 
         if (!response.ok) throw new Error("Upload failed");
         
         setUploadProgress(80);
-        
-        // Stage 4: Indexing (AI Triggered on backend)
         setUploadStage('indexing');
         setCurrentFileName('Waiting for AI Analysis...');
-        
-        // Wait briefly for backend to process initial thumb/metadata
         await new Promise(r => setTimeout(r, 1500));
         setUploadProgress(100);
         
@@ -183,15 +206,15 @@ const PhotographerEventDetail: React.FC<{ onNavigate: (view: string) => void, in
   const balance = (activeEvent.price || 0) - totalPaid;
 
   const optStrategies = [
-    { id: 'balanced', label: 'BALANCED (WEBP V2 CHROMA-SMART)', reduction: '85%', icon: Wand2 },
-    { id: 'performance', label: 'SPEED (WEBP 1080P IQ)', reduction: '92%', icon: Zap },
-    { id: 'high-quality', label: 'PREMIUM (4K WEBP LOSSLESS)', reduction: '40%', icon: ShieldCheck },
+    { id: 'balanced', label: 'BALANCED (WEBP V2)', reduction: '85%', icon: Wand2 },
+    { id: 'performance', label: 'SPEED (WEBP 1080P)', reduction: '92%', icon: Zap },
+    { id: 'high-quality', label: 'PREMIUM (4K WEBP)', reduction: '40%', icon: ShieldCheck },
     { id: 'none', label: 'ORIGINAL FORMAT', reduction: '0%', icon: FileType },
   ];
 
   return (
     <div className="flex flex-col h-full bg-slate-50 -m-8 animate-in fade-in duration-500">
-      {/* Header with Navigation and Tabs */}
+      {/* Header */}
       <div className="bg-white px-8 py-3 border-b border-slate-100 space-y-3 shadow-sm">
         <div className="flex items-center gap-4">
           <button 
@@ -206,11 +229,18 @@ const PhotographerEventDetail: React.FC<{ onNavigate: (view: string) => void, in
             </div>
             <div>
               <h1 className="text-lg font-bold text-slate-900 leading-none">{activeEvent.name}</h1>
-              <p className="text-[10px] text-slate-400 font-bold flex items-center gap-2 mt-1">
-                <span className="uppercase tracking-wider">{new Date(activeEvent.date).toLocaleDateString()}</span>
-                <span className="w-1 h-1 bg-slate-200 rounded-full" />
-                <span className="uppercase tracking-wider">{activeEvent.photoCount} photos</span>
-              </p>
+              <div className="flex items-center gap-3 mt-1">
+                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">{activeEvent.photoCount} photos</p>
+                  <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest ${
+                      activeEvent.selectionStatus === 'open' ? 'bg-blue-50 text-blue-600' :
+                      activeEvent.selectionStatus === 'submitted' ? 'bg-amber-50 text-amber-600' :
+                      activeEvent.selectionStatus === 'editing' ? 'bg-purple-50 text-purple-600' :
+                      activeEvent.selectionStatus === 'review' ? 'bg-orange-50 text-orange-600' :
+                      'bg-emerald-50 text-emerald-600'
+                  }`}>
+                      {activeEvent.selectionStatus}
+                  </span>
+              </div>
             </div>
           </div>
         </div>
@@ -234,6 +264,7 @@ const PhotographerEventDetail: React.FC<{ onNavigate: (view: string) => void, in
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 no-scrollbar">
+        {/* SETTINGS TAB */}
         {activeTab === 'settings' && (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start max-w-7xl mx-auto">
             <div className="lg:col-span-8 space-y-4">
@@ -245,10 +276,7 @@ const PhotographerEventDetail: React.FC<{ onNavigate: (view: string) => void, in
                     </div>
                     <h3 className="text-lg font-black text-slate-900 uppercase tracking-tight">Project Summary</h3>
                   </div>
-                  <button 
-                    onClick={() => setIsEditDetailsOpen(true)}
-                    className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-indigo-600 bg-indigo-50 px-4 py-2 rounded-xl hover:bg-indigo-100 transition-all"
-                  >
+                  <button onClick={() => setIsEditDetailsOpen(true)} className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-indigo-600 bg-indigo-50 px-4 py-2 rounded-xl hover:bg-indigo-100 transition-all">
                     <Edit2 className="w-3.5 h-3.5" /> Modify Details
                   </button>
                 </div>
@@ -277,7 +305,10 @@ const PhotographerEventDetail: React.FC<{ onNavigate: (view: string) => void, in
                           <Clock className="w-4 h-4 text-indigo-400" />
                           <div>
                             <p className="font-bold text-slate-900 text-xs">{se.name}</p>
-                            <p className="text-[9px] text-slate-400 font-bold uppercase">{new Date(se.date).toLocaleDateString()}</p>
+                            <p className="text-[9px] text-slate-400 font-bold uppercase">
+                                {new Date(se.date).toLocaleDateString()}
+                                {se.endDate ? ` - ${new Date(se.endDate).toLocaleDateString()}` : ''}
+                            </p>
                           </div>
                         </div>
                       </div>
@@ -296,11 +327,7 @@ const PhotographerEventDetail: React.FC<{ onNavigate: (view: string) => void, in
                       </div>
                       <h3 className="text-lg font-black uppercase tracking-tight">Financials</h3>
                     </div>
-                    <button 
-                        onClick={() => setIsPaymentModalOpen(true)}
-                        className="bg-white/10 hover:bg-white/20 p-2 rounded-xl transition-colors"
-                        title="Record Payment"
-                    >
+                    <button onClick={() => setIsPaymentModalOpen(true)} className="bg-white/10 hover:bg-white/20 p-2 rounded-xl transition-colors">
                         <Plus className="w-5 h-5 text-white" />
                     </button>
                 </div>
@@ -325,9 +352,131 @@ const PhotographerEventDetail: React.FC<{ onNavigate: (view: string) => void, in
           </div>
         )}
 
-        {/* ... (Upload, Sorted, Selections, Share tabs unchanged) ... */}
+        {/* WORKFLOW TAB (NEW) */}
+        {activeTab === 'workflow' && (
+            <div className="max-w-5xl mx-auto space-y-8">
+                <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm space-y-8">
+                    <div className="flex justify-between items-center">
+                        <div>
+                            <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tight">Production Workflow</h3>
+                            <p className="text-xs text-slate-500 font-bold mt-1 uppercase tracking-widest">Current Stage: {activeEvent.selectionStatus}</p>
+                        </div>
+                    </div>
+
+                    {/* Timeline Visual */}
+                    <div className="relative pt-6 pb-2">
+                        <div className="absolute top-1/2 left-0 right-0 h-1 bg-slate-100 -translate-y-1/2 z-0" />
+                        <div className="relative z-10 flex justify-between">
+                            {['open', 'submitted', 'editing', 'review', 'accepted'].map((step, idx) => {
+                                const currentIdx = ['open', 'submitted', 'editing', 'review', 'accepted'].indexOf(activeEvent.selectionStatus);
+                                const isCompleted = idx <= currentIdx;
+                                return (
+                                    <div key={step} className="flex flex-col items-center gap-2">
+                                        <div className={`w-8 h-8 rounded-full flex items-center justify-center border-4 transition-all ${
+                                            isCompleted ? 'bg-[#10B981] border-[#10B981] text-white' : 'bg-white border-slate-200 text-slate-300'
+                                        }`}>
+                                            {isCompleted && <CheckSquare className="w-4 h-4" />}
+                                        </div>
+                                        <span className={`text-[10px] font-black uppercase tracking-widest ${isCompleted ? 'text-slate-900' : 'text-slate-300'}`}>
+                                            {step}
+                                        </span>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+
+                    {/* Actions based on Status */}
+                    <div className="p-6 bg-slate-50 rounded-3xl border border-slate-200 space-y-4">
+                        {activeEvent.selectionStatus === 'submitted' && (
+                            <div className="flex gap-4">
+                                <div className="flex-1 space-y-2">
+                                    <h4 className="font-bold text-slate-900">Client Selection Submitted</h4>
+                                    <p className="text-xs text-slate-500">Selections are locked. Review them or start editing.</p>
+                                </div>
+                                <button 
+                                    onClick={() => handleWorkflowChange('open')}
+                                    className="px-6 py-3 bg-white border border-slate-200 text-slate-600 rounded-xl text-xs font-black uppercase tracking-widest hover:border-red-200 hover:text-red-500 flex items-center gap-2"
+                                >
+                                    <Unlock className="w-4 h-4" /> Unlock
+                                </button>
+                                <div className="flex flex-col gap-2">
+                                    <input 
+                                        type="date" 
+                                        className="px-4 py-2 rounded-xl border border-slate-200 text-xs" 
+                                        onChange={(e) => setDeliveryDate(e.target.value)}
+                                    />
+                                    <button 
+                                        onClick={() => handleWorkflowChange('editing')}
+                                        disabled={!deliveryDate}
+                                        className="px-6 py-3 bg-[#10B981] text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-[#059669] disabled:opacity-50"
+                                    >
+                                        Start Editing
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
+                        {activeEvent.selectionStatus === 'editing' && (
+                            <div className="flex gap-4 items-center justify-between">
+                                <div>
+                                    <h4 className="font-bold text-slate-900">Editing In Progress</h4>
+                                    <p className="text-xs text-slate-500">Estimated Delivery: {activeEvent.timeline?.deliveryEstimate ? new Date(activeEvent.timeline.deliveryEstimate).toLocaleDateString() : 'N/A'}</p>
+                                </div>
+                                <button 
+                                    onClick={() => handleWorkflowChange('review')}
+                                    className="px-6 py-3 bg-indigo-600 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-indigo-700 flex items-center gap-2"
+                                >
+                                    <Send className="w-4 h-4" /> Submit for Review
+                                </button>
+                            </div>
+                        )}
+
+                        {activeEvent.selectionStatus === 'review' && (
+                            <div className="flex gap-4 items-center justify-between">
+                                <div>
+                                    <h4 className="font-bold text-slate-900">In Review</h4>
+                                    <p className="text-xs text-slate-500">Waiting for client feedback or approval.</p>
+                                </div>
+                                {/* Actions handled via photo comments mainly */}
+                            </div>
+                        )}
+                        
+                        {activeEvent.selectionStatus === 'open' && (
+                            <p className="text-center text-xs font-bold text-slate-400 uppercase tracking-widest">Waiting for client submission...</p>
+                        )}
+                    </div>
+                </div>
+            </div>
+        )}
+
+        {/* UPLOAD TAB */}
         {activeTab === 'upload' && (
           <div className="max-w-5xl mx-auto space-y-4 animate-in fade-in duration-300">
+            {/* Sub Event Selector */}
+            <div className="bg-white p-4 rounded-3xl border border-slate-100 shadow-sm flex items-center gap-4">
+                <div className="flex-1">
+                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2 mb-1 block">Assign to Sub-Event</label>
+                    <div className="flex gap-2">
+                        <select 
+                            value={selectedSubEvent} 
+                            onChange={(e) => {
+                                if(e.target.value === 'new') setIsSubEventModalOpen(true);
+                                else setSelectedSubEvent(e.target.value);
+                            }}
+                            className="w-full p-3 bg-slate-50 border border-slate-100 rounded-xl text-xs font-bold outline-none focus:border-[#10B981]"
+                        >
+                            <option value="" disabled>Select Sub-Event</option>
+                            {activeEvent.subEvents.map(se => (
+                                <option key={se.id} value={se.id}>{se.name}</option>
+                            ))}
+                            <option value="new">+ Create New Sub-Event</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            {/* Optimizer & Upload Box */}
             <div className="bg-white p-4 rounded-3xl border border-slate-100 shadow-sm flex items-center justify-between gap-6">
                <div className="flex items-center gap-4 flex-1">
                   <div className={`p-2.5 rounded-2xl ${useOptimization ? 'bg-emerald-50 text-[#10B981]' : 'bg-slate-50 text-slate-400'}`}>
@@ -372,6 +521,7 @@ const PhotographerEventDetail: React.FC<{ onNavigate: (view: string) => void, in
               {isUploading ? (
                 <div className="w-full max-w-xl space-y-10 py-4 animate-in fade-in duration-300">
                   <div className="flex flex-col items-center gap-6">
+                    {/* ... Loading Visuals Same as Before ... */}
                     <div className="relative group">
                       <div className="absolute inset-0 bg-[#10B981] rounded-[2.5rem] blur-xl opacity-20 group-hover:opacity-30 transition-opacity animate-pulse" />
                       <div className="relative w-24 h-24 bg-slate-900 text-[#10B981] rounded-[2.5rem] flex items-center justify-center shadow-2xl">
@@ -389,22 +539,7 @@ const PhotographerEventDetail: React.FC<{ onNavigate: (view: string) => void, in
                       </p>
                     </div>
                   </div>
-
-                  <div className="grid grid-cols-3 gap-4 w-full px-6">
-                    <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 flex flex-col items-center gap-1">
-                      <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Progress</p>
-                      <p className="text-sm font-black text-slate-900">{stats.processedCount} / {stats.totalCount}</p>
-                    </div>
-                    <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 flex flex-col items-center gap-1">
-                      <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Savings</p>
-                      <p className="text-sm font-black text-emerald-600">{(stats.savedSize / (1024 * 1024)).toFixed(1)} MB</p>
-                    </div>
-                    <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 flex flex-col items-center gap-1">
-                      <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Latency</p>
-                      <p className="text-sm font-black text-slate-900">42ms</p>
-                    </div>
-                  </div>
-
+                  {/* ... Progress Bar ... */}
                   <div className="relative px-8">
                     <div className="flex items-center justify-between mb-2 text-[9px] font-black text-slate-400 uppercase tracking-widest">
                       <span>Deployment Pipeline</span>
@@ -438,11 +573,11 @@ const PhotographerEventDetail: React.FC<{ onNavigate: (view: string) => void, in
                   <div className="flex gap-4 w-full max-w-sm">
                     <button 
                       onClick={triggerFolderUpload}
-                      className="w-full bg-[#10B981] hover:bg-slate-900 text-white px-8 py-5 rounded-2xl font-black uppercase tracking-[0.25em] flex items-center justify-center gap-3 transition-all shadow-xl shadow-[#10B981]/20 active:scale-95 text-[11px]"
+                      disabled={!selectedSubEvent}
+                      className="w-full bg-[#10B981] hover:bg-slate-900 text-white px-8 py-5 rounded-2xl font-black uppercase tracking-[0.25em] flex items-center justify-center gap-3 transition-all shadow-xl shadow-[#10B981]/20 active:scale-95 text-[11px] disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <Zap className="w-4 h-4" /> Open Folder
                     </button>
-                    {/* Simulation mode removed for real implementation */}
                   </div>
                 </>
               )}
@@ -450,13 +585,14 @@ const PhotographerEventDetail: React.FC<{ onNavigate: (view: string) => void, in
           </div>
         )}
 
+        {/* Other Tabs */}
         {activeTab === 'sorted' && <div className="max-w-7xl mx-auto h-full"><GalleryView /></div>}
         {activeTab === 'selections' && (
           <div className="max-w-7xl mx-auto space-y-6">
              <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm flex items-center justify-between">
                 <div>
                   <h3 className="text-xl font-black text-slate-900 tracking-tight uppercase">Deliverables Stack</h3>
-                  <p className="text-xs text-slate-500 font-medium mt-1">Photos curated by the user for the final album.</p>
+                  <p className="text-xs text-slate-500 font-medium mt-1">Photos selected by client.</p>
                 </div>
                 <div className="flex gap-3">
                   <button onClick={() => alert('Exporting sidecars...')} className="flex items-center gap-2 px-6 py-3 bg-indigo-50 text-indigo-600 font-black uppercase tracking-widest rounded-2xl text-[10px]">
@@ -468,9 +604,14 @@ const PhotographerEventDetail: React.FC<{ onNavigate: (view: string) => void, in
                 </div>
              </div>
              <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
-               {photos.filter(p => p.eventId === activeEvent.id && p.quality === 'high').slice(0, 24).map(p => (
-                 <div key={p.id} className="relative aspect-square rounded-2xl overflow-hidden shadow-sm border-4 border-white">
-                   <img src={p.url} className="w-full h-full object-cover" alt="" />
+               {photos.filter(p => p.eventId === activeEvent.id && (p.isSelected || p.reviewStatus !== 'pending')).map(p => (
+                 <div key={p.id} className="relative aspect-square rounded-2xl overflow-hidden shadow-sm border-4 border-white group">
+                   <img src={p.editedUrl || p.url} className="w-full h-full object-cover" alt="" />
+                   {activeEvent.selectionStatus === 'review' && (
+                       <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                           {/* Add interactions if needed */}
+                       </div>
+                   )}
                  </div>
                ))}
              </div>
@@ -478,17 +619,7 @@ const PhotographerEventDetail: React.FC<{ onNavigate: (view: string) => void, in
         )}
         {activeTab === 'share' && (
           <div className="max-w-2xl mx-auto space-y-8 pt-12 animate-in slide-in-from-bottom-8 duration-500 text-center">
-            <h3 className="text-4xl font-black text-slate-900 tracking-tight uppercase">Ready to Close?</h3>
-            <p className="text-slate-500 font-medium text-lg">Send the final gallery links and invoices.</p>
-            <div className="bg-white p-10 rounded-[3rem] border border-slate-100 shadow-2xl space-y-8 text-left">
-              <div className="p-6 bg-slate-50 rounded-3xl border border-slate-100 text-center">
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Pending Dues</p>
-                <p className="text-3xl font-black text-amber-600 tracking-tight">₹{balance.toLocaleString()}</p>
-              </div>
-              <button className="w-full py-6 bg-slate-900 text-white rounded-[1.5rem] font-black uppercase tracking-widest shadow-2xl transition-all">
-                Publish Final Portal
-              </button>
-            </div>
+            {/* Share UI */}
           </div>
         )}
       </div>
@@ -574,7 +705,23 @@ const PhotographerEventDetail: React.FC<{ onNavigate: (view: string) => void, in
         </div>
       )}
 
-      {/* Record Payment Modal */}
+      {/* New Sub Event Modal */}
+      {isSubEventModalOpen && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+              <div className="bg-white rounded-[2rem] p-8 w-full max-w-sm space-y-4">
+                  <h3 className="font-black text-lg">Add Sub-Event</h3>
+                  <input type="text" placeholder="Name (e.g. Reception)" className="w-full p-3 border rounded-xl" value={newSubEvent.name} onChange={e => setNewSubEvent({...newSubEvent, name: e.target.value})} />
+                  <input type="date" className="w-full p-3 border rounded-xl" value={newSubEvent.date} onChange={e => setNewSubEvent({...newSubEvent, date: e.target.value})} />
+                  <input type="date" placeholder="End Date (Optional)" className="w-full p-3 border rounded-xl" value={newSubEvent.endDate} onChange={e => setNewSubEvent({...newSubEvent, endDate: e.target.value})} />
+                  <div className="flex gap-2">
+                      <button onClick={() => setIsSubEventModalOpen(false)} className="flex-1 py-3 text-slate-500 font-bold">Cancel</button>
+                      <button onClick={handleCreateSubEvent} className="flex-1 py-3 bg-slate-900 text-white rounded-xl font-bold">Create</button>
+                  </div>
+              </div>
+          </div>
+      )}
+
+      {/* Record Payment Modal (Keep existing) */}
       {isPaymentModalOpen && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
           <div className="bg-white rounded-[2.5rem] w-full max-w-sm overflow-hidden shadow-2xl">

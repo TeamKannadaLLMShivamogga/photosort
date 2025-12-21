@@ -1,6 +1,6 @@
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { User, UserRole, Event, Photo, Notification, SubEvent } from '../types';
+import { User, UserRole, Event, Photo, Notification, SubEvent, SelectionStatus, Comment } from '../types';
 
 // CHANGED: Use relative path to utilize Vite Proxy (solves CORS)
 const API_URL = '/api';
@@ -25,13 +25,17 @@ interface DataContextType {
   addUser: (user: Partial<User>) => Promise<void>;
   updateUser: (user: User) => Promise<void>;
   deleteUser: (id: string) => Promise<void>;
-  addSubEvent: (eventId: string, subEvent: SubEvent) => void;
+  addSubEvent: (eventId: string, subEvent: SubEvent) => Promise<void>;
   removeSubEvent: (eventId: string, subEventId: string) => void;
   toggleUserStatus: (userId: string) => Promise<void>;
   refreshPhotos: () => Promise<void>;
   recordPayment: (eventId: string, amount: number, date?: string) => Promise<void>;
   assignUserToEvent: (eventId: string, userDetails: { name: string, email: string, phone?: string }) => Promise<void>;
   removeUserFromEvent: (eventId: string, userId: string) => Promise<void>;
+  updateEventWorkflow: (eventId: string, status: SelectionStatus, deliveryEstimate?: string, note?: string) => Promise<void>;
+  uploadEditedPhoto: (photoId: string, file: File) => Promise<void>;
+  addPhotoComment: (photoId: string, text: string) => Promise<void>;
+  updatePhotoReviewStatus: (photoId: string, status: 'approved' | 'changes_requested') => Promise<void>;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -46,7 +50,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [selectedPhotos, setSelectedPhotos] = useState<Set<string>>(new Set());
   const [isLoading, setIsLoading] = useState(true);
 
-  // Wrapper to persist active event
   const setActiveEvent = (event: Event | null) => {
     _setActiveEvent(event);
     if (event) {
@@ -56,12 +59,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  // Helper to normalize ID from _id if necessary
   const normalizeData = (item: any) => {
     if (!item) return item;
     return {
       ...item,
-      id: item.id || item._id, // Handle both MongoDB _id and API id
+      id: item.id || item._id, 
     };
   };
 
@@ -75,12 +77,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       } catch (e) { console.error("Failed to refresh users", e); }
   };
 
-  // Initialize and Fetch Initial Data
   useEffect(() => {
     const fetchData = async () => {
       setIsLoading(true);
-      
-      // 1. Optimistic Restore of User Session (just to prevent UI flicker, validated later)
       const storedUser = localStorage.getItem('photoSortUser');
       if (storedUser) {
           try { setCurrentUser(JSON.parse(storedUser)); } catch (e) { console.error("Failed to parse stored user", e); }
@@ -92,36 +91,25 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           fetch(`${API_URL}/events`)
         ]);
         
-        if (!usersRes.ok) throw new Error(`Users API Error: ${usersRes.statusText}`);
-        if (!eventsRes.ok) throw new Error(`Events API Error: ${eventsRes.statusText}`);
-
         const rawUsersData = await usersRes.json();
         const rawEventsData = await eventsRes.json();
-        
-        // Normalize Data (Ensure 'id' exists)
         const usersData = Array.isArray(rawUsersData) ? rawUsersData.map(normalizeData) : [];
         const eventsData = Array.isArray(rawEventsData) ? rawEventsData.map(normalizeData) : [];
-
-        console.log(`%c[DB Connected] Loaded ${usersData.length} Users and ${eventsData.length} Events`, 'color: #10B981; font-weight: bold;');
         
         setUsers(usersData);
         setEvents(eventsData);
 
-        // 2. Sync Session with fresh data
         if (storedUser) {
             const parsedUser = JSON.parse(storedUser);
-            // Match by ID or Email
             const freshUser = usersData.find((u: User) => u.id === parsedUser.id || u.email === parsedUser.email);
             if (freshUser) {
                 setCurrentUser(freshUser);
                 localStorage.setItem('photoSortUser', JSON.stringify(freshUser));
             } else {
-                // User from local storage no longer exists in DB
                 logout();
             }
         }
 
-        // 3. Restore Active Event
         const storedEventId = localStorage.getItem('photoSortActiveEventId');
         if (storedEventId) {
             const rehydratedEvent = eventsData.find((e: Event) => e.id === storedEventId);
@@ -135,7 +123,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       } catch (error) {
         console.error("Backend Connection Failed:", error);
-        // Do not set mock data. Leave arrays empty so user sees connection error state or empty state.
       } finally {
         setIsLoading(false);
       }
@@ -147,22 +134,16 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       try {
         const res = await fetch(`${API_URL}/events/${eventId}/photos`);
         if (!res.ok) throw new Error("Backend unavailable for photos");
-        
         const rawData = await res.json();
         const data = Array.isArray(rawData) ? rawData.map(normalizeData) : [];
-        
-        console.log(`%c[DB Connected] Loaded ${data.length} Photos for Event ${eventId}`, 'color: #10B981; font-weight: bold;');
-        
         setPhotos(data);
         const selected = new Set(data.filter((p: Photo) => p.isSelected).map((p: Photo) => p.id));
         setSelectedPhotos(selected);
       } catch (err) {
-        console.error("Failed to load photos from DB:", err);
-        setPhotos([]); // Ensure no stale data
+        setPhotos([]); 
       }
   };
 
-  // Fetch photos when active event changes
   useEffect(() => {
     if (activeEvent?.id) {
         loadPhotos(activeEvent.id);
@@ -184,32 +165,18 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email })
       });
-      
-      if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(errorData.error || "Login failed");
-      }
-
-      const rawUser = await res.json();
-      const user = normalizeData(rawUser);
-
+      if (!res.ok) throw new Error("Login failed");
+      const user = normalizeData(await res.json());
       if (user) {
-        if (user.isActive === false && user.role === UserRole.PHOTOGRAPHER) {
-          alert("Your account has been disabled by the administrator.");
-          return;
-        }
         setCurrentUser(user);
         localStorage.setItem('photoSortUser', JSON.stringify(user));
-        
-        // Add to users list if not present
         setUsers(prev => {
             if (!prev.find(u => u.id === user.id)) return [...prev, user];
             return prev;
         });
       }
     } catch (err: any) {
-      console.error("Login Error:", err);
-      alert(`Login failed: ${err.message || "Could not connect to server"}`);
+      alert(`Login failed: ${err.message}`);
     }
   };
 
@@ -222,7 +189,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const togglePhotoSelection = async (id: string) => {
-    // Optimistic UI update
+    // Check lock status
+    if (activeEvent && activeEvent.selectionStatus !== 'open') {
+        alert("Selections are currently locked/submitted.");
+        return;
+    }
+
     setSelectedPhotos(prev => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
@@ -232,23 +204,13 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     try {
       await fetch(`${API_URL}/photos/${id}/selection`, { method: 'POST' });
-    } catch (e) {
-      console.error("Failed to sync selection with backend", e);
-      // We don't revert optimistic update here to keep UI snappy, but in a real app you might want to show a toast
-    }
+    } catch (e) { console.error(e); }
   };
 
   const submitSelections = async () => {
     if (!activeEvent) return;
-    try {
-        const res = await fetch(`${API_URL}/events/${activeEvent.id}/submit-selections`, { method: 'POST' });
-        if (!res.ok) throw new Error("Failed to submit");
-        alert(`Successfully submitted selections for ${activeEvent.name}!`);
-        setSelectedPhotos(new Set());
-    } catch (e) {
-        console.error("Submission failed", e);
-        alert("Failed to submit selections. Please check your connection.");
-    }
+    await updateEventWorkflow(activeEvent.id, 'submitted');
+    alert(`Successfully submitted selections for ${activeEvent.name}!`);
   };
 
   const addEvent = async (eventData: Partial<Event> & { initialClients?: any[] }) => {
@@ -258,14 +220,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(eventData)
       });
-      if (!res.ok) throw new Error("Failed to add event");
       const newEvent = normalizeData(await res.json());
       setEvents(prev => [...prev, newEvent]);
-      await refreshUsers(); // Refresh users in case new clients were created
-    } catch (err) {
-      console.error("Add Event Failed:", err);
-      alert("Failed to create event. Server may be unreachable.");
-    }
+      await refreshUsers(); 
+    } catch (err) { alert("Failed to create event."); }
   };
 
   const updateEvent = async (updated: Event) => {
@@ -275,78 +233,50 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updated)
       });
-      if (!res.ok) throw new Error("Failed to update event");
       const saved = normalizeData(await res.json());
       setEvents(prev => prev.map(e => e.id === saved.id ? saved : e));
       if (activeEvent?.id === saved.id) setActiveEvent(saved);
-    } catch (err) { 
-        console.error("Update Event Failed:", err);
-        alert("Failed to update event details.");
-    }
+    } catch (err) { alert("Failed to update event."); }
   };
 
   const deleteEvent = async (id: string) => {
-    try {
-        const res = await fetch(`${API_URL}/events/${id}`, { method: 'DELETE' });
-        if (!res.ok) throw new Error("Failed to delete");
-        
-        setEvents(prev => prev.filter(e => e.id !== id));
-        if (activeEvent?.id === id) setActiveEvent(null);
-    } catch (e) { 
-        console.error("Delete Event Failed:", e);
-        alert("Failed to delete event.");
-    }
+    await fetch(`${API_URL}/events/${id}`, { method: 'DELETE' });
+    setEvents(prev => prev.filter(e => e.id !== id));
+    if (activeEvent?.id === id) setActiveEvent(null);
   };
 
   const addUser = async (userData: Partial<User>) => {
-    try {
-        const res = await fetch(`${API_URL}/users`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(userData)
-        });
-        if(!res.ok) throw new Error("Failed");
-        const newUser = normalizeData(await res.json());
-        setUsers(prev => [...prev, newUser]);
-    } catch (e) {
-        console.error("Add User Failed:", e);
-    }
+    const res = await fetch(`${API_URL}/users`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(userData) });
+    const newUser = normalizeData(await res.json());
+    setUsers(prev => [...prev, newUser]);
   };
 
   const updateUser = async (updatedUser: User) => {
-    try {
-        const res = await fetch(`${API_URL}/users/${updatedUser.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updatedUser)
-        });
-        if(!res.ok) throw new Error("Failed");
-        const saved = normalizeData(await res.json());
-        setUsers(prev => prev.map(u => u.id === saved.id ? saved : u));
-        if (currentUser?.id === saved.id) {
-            setCurrentUser(saved);
-            localStorage.setItem('photoSortUser', JSON.stringify(saved));
-        }
-    } catch(e) {
-        console.error("Update User Failed:", e);
-        alert("Failed to update user profile.");
+    const res = await fetch(`${API_URL}/users/${updatedUser.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(updatedUser) });
+    const saved = normalizeData(await res.json());
+    setUsers(prev => prev.map(u => u.id === saved.id ? saved : u));
+    if (currentUser?.id === saved.id) {
+        setCurrentUser(saved);
+        localStorage.setItem('photoSortUser', JSON.stringify(saved));
     }
   };
 
   const deleteUser = async (id: string) => {
-    try {
-        await fetch(`${API_URL}/users/${id}`, { method: 'DELETE' });
-        setUsers(prev => prev.filter(u => u.id !== id));
-    } catch (e) { 
-        console.error("Delete User Failed:", e); 
-    }
+    await fetch(`${API_URL}/users/${id}`, { method: 'DELETE' });
+    setUsers(prev => prev.filter(u => u.id !== id));
   };
 
-  const addSubEvent = (eventId: string, subEvent: SubEvent) => {
-    const event = events.find(e => e.id === eventId);
-    if (event) {
-      updateEvent({ ...event, subEvents: [...event.subEvents, subEvent] });
-    }
+  const addSubEvent = async (eventId: string, subEvent: SubEvent) => {
+    try {
+        const res = await fetch(`${API_URL}/events/${eventId}/subevents`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(subEvent)
+        });
+        const updatedEvent = normalizeData(await res.json());
+        setEvents(prev => prev.map(e => e.id === eventId ? updatedEvent : e));
+        if (activeEvent?.id === eventId) setActiveEvent(updatedEvent);
+    } catch(e) { console.error(e); }
   };
 
   const removeSubEvent = (eventId: string, subEventId: string) => {
@@ -357,66 +287,88 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const toggleUserStatus = async (userId: string) => {
-    try {
-        const res = await fetch(`${API_URL}/users/${userId}/status`, { method: 'PATCH' });
-        if(!res.ok) throw new Error("Failed");
-        const data = normalizeData(await res.json());
-        setUsers(prev => prev.map(u => u.id === userId ? { ...u, isActive: data.isActive } : u));
-    } catch (e) {
-        console.error("Toggle Status Failed:", e);
-    }
+    const res = await fetch(`${API_URL}/users/${userId}/status`, { method: 'PATCH' });
+    const data = normalizeData(await res.json());
+    setUsers(prev => prev.map(u => u.id === userId ? { ...u, isActive: data.isActive } : u));
   };
 
   const recordPayment = async (eventId: string, amount: number, date?: string) => {
-    try {
-        const res = await fetch(`${API_URL}/events/${eventId}/payment`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ amount, date })
-        });
-        if (!res.ok) throw new Error("Payment record failed");
-        const updatedEvent = normalizeData(await res.json());
-        setEvents(prev => prev.map(e => e.id === eventId ? updatedEvent : e));
-        if (activeEvent?.id === eventId) setActiveEvent(updatedEvent);
-    } catch (e) {
-        console.error("Record Payment Failed:", e);
-        alert("Failed to record payment.");
-    }
+    const res = await fetch(`${API_URL}/events/${eventId}/payment`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ amount, date })
+    });
+    const updatedEvent = normalizeData(await res.json());
+    setEvents(prev => prev.map(e => e.id === eventId ? updatedEvent : e));
+    if (activeEvent?.id === eventId) setActiveEvent(updatedEvent);
   };
 
   const assignUserToEvent = async (eventId: string, userDetails: { name: string, email: string, phone?: string }) => {
-    try {
-      const res = await fetch(`${API_URL}/events/${eventId}/assign-user`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(userDetails)
-      });
-      if (!res.ok) throw new Error("Failed to assign user");
-      const updatedEvent = normalizeData(await res.json());
-      setEvents(prev => prev.map(e => e.id === eventId ? updatedEvent : e));
-      if (activeEvent?.id === eventId) setActiveEvent(updatedEvent);
-      await refreshUsers(); // Sync new user to users list
-    } catch (e) {
-      console.error("Assign User Failed:", e);
-      alert("Failed to add user to event.");
-    }
+    const res = await fetch(`${API_URL}/events/${eventId}/assign-user`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(userDetails)
+    });
+    const updatedEvent = normalizeData(await res.json());
+    setEvents(prev => prev.map(e => e.id === eventId ? updatedEvent : e));
+    if (activeEvent?.id === eventId) setActiveEvent(updatedEvent);
+    await refreshUsers();
   };
 
   const removeUserFromEvent = async (eventId: string, userId: string) => {
-    try {
-      const res = await fetch(`${API_URL}/events/${eventId}/remove-user`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId })
+    const res = await fetch(`${API_URL}/events/${eventId}/remove-user`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId })
+    });
+    const updatedEvent = normalizeData(await res.json());
+    setEvents(prev => prev.map(e => e.id === eventId ? updatedEvent : e));
+    if (activeEvent?.id === eventId) setActiveEvent(updatedEvent);
+  };
+
+  const updateEventWorkflow = async (eventId: string, status: SelectionStatus, deliveryEstimate?: string, note?: string) => {
+      try {
+          const res = await fetch(`${API_URL}/events/${eventId}/workflow`, {
+              method: 'PATCH',
+              headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify({ status, deliveryEstimate, note })
+          });
+          const updatedEvent = normalizeData(await res.json());
+          setEvents(prev => prev.map(e => e.id === eventId ? updatedEvent : e));
+          if (activeEvent?.id === eventId) setActiveEvent(updatedEvent);
+      } catch(e) { console.error(e); }
+  };
+
+  const uploadEditedPhoto = async (photoId: string, file: File) => {
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await fetch(`${API_URL}/photos/${photoId}/edit`, {
+          method: 'POST',
+          body: formData
       });
-      if (!res.ok) throw new Error("Failed to remove user");
-      const updatedEvent = normalizeData(await res.json());
-      setEvents(prev => prev.map(e => e.id === eventId ? updatedEvent : e));
-      if (activeEvent?.id === eventId) setActiveEvent(updatedEvent);
-    } catch (e) {
-      console.error("Remove User Failed:", e);
-      alert("Failed to remove user from event.");
-    }
+      const updatedPhoto = normalizeData(await res.json());
+      setPhotos(prev => prev.map(p => p.id === photoId ? updatedPhoto : p));
+  };
+
+  const addPhotoComment = async (photoId: string, text: string) => {
+      if (!currentUser) return;
+      const res = await fetch(`${API_URL}/photos/${photoId}/comment`, {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ author: currentUser.name, text, role: currentUser.role })
+      });
+      const updatedPhoto = normalizeData(await res.json());
+      setPhotos(prev => prev.map(p => p.id === photoId ? updatedPhoto : p));
+  };
+
+  const updatePhotoReviewStatus = async (photoId: string, status: 'approved' | 'changes_requested') => {
+      const res = await fetch(`${API_URL}/photos/${photoId}/review-status`, {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ status })
+      });
+      const updatedPhoto = normalizeData(await res.json());
+      setPhotos(prev => prev.map(p => p.id === photoId ? updatedPhoto : p));
   };
 
   return (
@@ -424,7 +376,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       currentUser, users, events, photos, notifications, activeEvent, selectedPhotos, isLoading,
       login, logout, setActiveEvent, togglePhotoSelection, submitSelections,
       addEvent, updateEvent, deleteEvent, addUser, updateUser, deleteUser, addSubEvent, removeSubEvent,
-      toggleUserStatus, refreshPhotos, recordPayment, assignUserToEvent, removeUserFromEvent
+      toggleUserStatus, refreshPhotos, recordPayment, assignUserToEvent, removeUserFromEvent,
+      updateEventWorkflow, uploadEditedPhoto, addPhotoComment, updatePhotoReviewStatus
     }}>
       {children}
     </DataContext.Provider>

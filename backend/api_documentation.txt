@@ -1,261 +1,178 @@
-# PhotoSort Pro - Backend API Documentation
 
-This document outlines the API architecture for the PhotoSort Pro application.
-The backend consists of two main services:
-1. **Node.js/Express Service (Port 8000)**: Handles core logic, database interactions (MongoDB), user management, and event orchestration.
-2. **Python AI Service (Port 8001)**: Handles asynchronous image processing, face clustering, and metadata generation.
+# PhotoSort Pro - System API Documentation
+
+This document outlines the architecture and API specification for the PhotoSort Pro application.
+The system is composed of two Python FastAPI services and a React frontend.
 
 ---
 
-## 1. Data Models (Pydantic Representation)
+## 1. System Architecture
 
-Although the main backend is Node.js/Mongoose, these schemas represent the data structure in Pydantic format for clarity and for the Python AI service integration.
+### A. Master Backend Service
+*   **Port:** `8000`
+*   **Framework:** Python FastAPI
+*   **Role:** Core business logic, database management, file storage, user authentication, and orchestration.
+*   **Static Files:** Serves uploaded images via `/uploads` path (mapped to local `uploads/` directory).
 
+### B. Gen AI Service
+*   **Port:** `8001`
+*   **Framework:** Python FastAPI
+*   **Role:** Asynchronous image processing, metadata generation, face detection, and smart tagging using Vision Language Models (Qwen-VL) or mock engines.
+
+### C. Database
+*   **Type:** MongoDB
+*   **Connection:** Both services connect to the same MongoDB instance (`photosort` database).
+
+---
+
+## 2. Data Models (Pydantic)
+
+### User
 ```python
-from typing import List, Optional, Literal
-from datetime import datetime
-from pydantic import BaseModel
-
-# Enums
-UserRole = Literal['ADMIN', 'PHOTOGRAPHER', 'USER']
-SubscriptionTier = Literal['FREE', 'PRO', 'STUDIO']
-EventStatus = Literal['active', 'completed', 'closed']
-PhotoQuality = Literal['high', 'medium', 'low']
-EventPlan = Literal['BASIC', 'STANDARD', 'PRO']
-
-class FamilyMember(BaseModel):
-    id: str
-    name: str
-    relation: str
-    referencePhoto: Optional[str] = None
-
 class User(BaseModel):
-    id: str
-    email: str
+    id: str                 # MongoDB ObjectId
+    email: str              # Unique
     name: str
-    role: UserRole
-    avatar: Optional[str] = None
-    familyMembers: List[FamilyMember] = []
-    subscriptionTier: SubscriptionTier = 'FREE'
-    subscriptionExpiry: Optional[datetime] = None
-    isActive: bool = True
-    totalEventsCount: int = 0
-    totalPhotosCount: int = 0
-    
-class SubEvent(BaseModel):
-    id: str
-    name: str
-    date: datetime
+    phone: Optional[str]    # Mobile number for lookup
+    role: 'ADMIN' | 'PHOTOGRAPHER' | 'USER'
+    avatar: str
+    familyMembers: List[FamilyMember]
+    subscriptionTier: 'FREE' | 'PRO' | 'STUDIO'
+    isActive: bool
+```
 
+### Event
+```python
 class Event(BaseModel):
     id: str
     name: str
     date: datetime
-    photographerId: str  # Reference to User.id
+    photographerId: str     # Reference to User
     coverImage: str
-    photoCount: int = 0
-    assignedUsers: List[str] = [] # List of User IDs
-    subEvents: List[SubEvent] = []
-    status: EventStatus = 'active'
-    price: Optional[float] = None
-    paidAmount: Optional[float] = None
-    plan: EventPlan = 'BASIC'
+    photoCount: int
+    assignedUsers: List[str] # List of User IDs who have access
+    subEvents: List[SubEvent]
+    status: 'active' | 'completed' | 'closed'
+    price: float
+    paidAmount: float
+    paymentStatus: 'pending' | 'partial' | 'paid'
+    plan: 'BASIC' | 'STANDARD' | 'PRO'
+```
 
+### Photo
+```python
 class Photo(BaseModel):
     id: str
-    url: str
+    url: str                # Relative path (e.g., "/uploads/event_id/image.jpg")
     eventId: str
-    tags: List[str] = []
-    people: List[str] = []
-    isAiPick: bool = False
-    quality: PhotoQuality = 'medium'
-    category: Optional[str] = None
-    isSelected: bool = False
-    isAiProcessed: bool = False # Flag for AI Service
-
-# --- Request Models ---
-
-class LoginRequest(BaseModel):
-    email: str
-
-class PhotoUploadRequest(BaseModel):
-    photos: List[Photo] # Array of photo objects to be created
+    tags: List[str]
+    people: List[str]
+    isAiPick: bool
+    quality: 'high' | 'medium' | 'low'
+    category: str
+    isSelected: bool
+    isAiProcessed: bool     # Flag for AI service status
+    aiAnalysis: Dict        # Detailed JSON from AI Service
 ```
 
 ---
 
-## 2. Node.js Backend Endpoints (Base URL: /api)
+## 3. Master Backend Endpoints (Port 8000)
+
+**Base URL:** `http://localhost:8000/api`
 
 ### Authentication
-
-#### `POST /auth/login`
-**Description:** Authenticates a user by email. If the user does not exist, a new account is created with default role 'USER'.
-**Request Body:** `LoginRequest`
-**Response:** `User`
-**Error:** 500 Internal Server Error
-
----
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `POST` | `/auth/login` | Login or Register by Email. Returns full User object. |
 
 ### User Management
-
-#### `GET /users`
-**Description:** Retrieves a list of all users in the system.
-**Response:** `List[User]`
-
-#### `POST /users`
-**Description:** Creates a new user manually (Admin function).
-**Request Body:** `User` (partial)
-**Response:** `User`
-
-#### `PUT /users/{id}`
-**Description:** Updates an existing user's profile details.
-**Path Parameters:** `id` (string)
-**Request Body:** `User` (partial)
-**Response:** `User`
-
-#### `DELETE /users/{id}`
-**Description:** Permanently deletes a user from the system.
-**Path Parameters:** `id` (string)
-**Response:** `{"message": "User deleted"}`
-
-#### `PATCH /users/{id}/status`
-**Description:** Toggles a user's `isActive` status (Enable/Disable account).
-**Path Parameters:** `id` (string)
-**Response:** `User`
-
----
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `GET` | `/users` | List all users. |
+| `POST` | `/users` | Create a user manually. |
+| `PUT` | `/users/{id}` | Update user profile. |
+| `DELETE` | `/users/{id}` | Delete user. |
+| `PATCH` | `/users/{id}/status` | Toggle active/inactive status. |
 
 ### Event Management
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `GET` | `/events` | List all events. |
+| `POST` | `/events` | Create Event. Accepts `initialClients` list to auto-create/assign users. |
+| `PUT` | `/events/{id}` | Update event details (payment, status, sub-events). |
+| `DELETE` | `/events/{id}` | Delete event and its photos. |
+| `POST` | `/events/{id}/assign-user` | **NEW:** Assign a user by Name/Email/Phone. Creates user if not exists. |
+| `POST` | `/events/{id}/remove-user` | **NEW:** Remove user access from event. |
+| `POST` | `/events/{id}/payment` | Record a payment transaction. |
 
-#### `GET /events`
-**Description:** Retrieves a list of all events.
-**Response:** `List[Event]`
-
-#### `POST /events`
-**Description:** Creates a new event. If `subEvents` is empty, a default sub-event is created.
-**Request Body:** `Event` (partial)
-**Response:** `Event`
-
-#### `PUT /events/{id}`
-**Description:** Updates event details (e.g., status, payment, details).
-**Path Parameters:** `id` (string)
-**Request Body:** `Event` (partial)
-**Response:** `Event`
-
-#### `DELETE /events/{id}`
-**Description:** Deletes an event and all associated photos from the database.
-**Path Parameters:** `id` (string)
-**Response:** `{"message": "Event deleted"}`
+### Photo Workflow
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `GET` | `/events/{id}/photos` | Get all photos for an event. |
+| `POST` | `/events/{id}/photos` | Upload files (Multipart). Saves to disk, creates DB entry, triggers AI. |
+| `POST` | `/photos/{id}/selection` | Toggle selection status. |
+| `POST` | `/events/{id}/submit-selections`| Finalize selections workflow. |
 
 ---
 
-### Photo Management & Workflow
-
-#### `GET /events/{id}/photos`
-**Description:** Retrieves all photos associated with a specific event.
-**Path Parameters:** `id` (string) - The Event ID.
-**Response:** `List[Photo]`
-
-#### `POST /events/{id}/photos`
-**Description:** Bulk uploads photo metadata to the database.
-**Logic:** 
-1. Saves photo entries with `isAiProcessed = false`.
-2. Updates Event photo count.
-3. Asynchronously triggers the Python AI Service (`POST /process-event/{id}`).
-**Path Parameters:** `id` (string) - The Event ID.
-**Request Body:** `PhotoUploadRequest`
-**Response:** `List[Photo]` (The created photo objects)
-
-#### `POST /events/{id}/submit-selections`
-**Description:** Finalizes the user's photo selections for an event. Triggers notification/email workflows (mocked).
-**Path Parameters:** `id` (string) - The Event ID.
-**Response:** `{"message": "Selections submitted successfully"}`
-
-#### `POST /photos/{id}/selection`
-**Description:** Toggles the `isSelected` boolean flag for a specific photo.
-**Path Parameters:** `id` (string) - The Photo ID.
-**Response:** `Photo` (Updated object)
-
----
-
-## 3. Python AI Service Endpoints (Internal Service)
+## 4. Gen AI Service Endpoints (Port 8001)
 
 **Base URL:** `http://localhost:8001`
 
-#### `POST /process-event/{event_id}`
-**Description:** Triggered by the Node.js backend after photos are uploaded. It initiates the GenAI processing pipeline.
-**Path Parameters:** `event_id` (str)
-**Logic:**
-1. Connects to MongoDB.
-2. Finds photos where `eventId == event_id` AND `isAiProcessed == False`.
-3. Simulates GenAI processing:
-   - Generates Tags (e.g., "Ceremony", "Candid").
-   - Detects People (e.g., "Rohan", "Priya").
-   - Determines `isAiPick`.
-4. Updates the Photo documents in MongoDB.
-5. Sets `isAiProcessed = True`.
-**Response:** `{"message": "Processing started for event {event_id}", "count": int}`
+### Processing
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `POST` | `/process-event/{event_id}` | Trigger background AI processing for an event. Scans for `isAiProcessed=False`. |
+| `GET` | `/health` | Check service status and GPU availability. |
+
+### Workflow Logic
+1.  **Ingestion:** Photos are uploaded to Master Backend. `isAiProcessed` is set to `False`.
+2.  **Trigger:** Master Backend calls `POST /process-event/{id}` on Gen AI Service.
+3.  **Analysis (Background Task):**
+    *   Gen AI Service iterates through unprocessed photos.
+    *   Uses Qwen-VL (or Mock) to generate Tags, People, Quality Score, and Categories.
+    *   Updates the `Photo` document directly in MongoDB.
+    *   Sets `isAiProcessed` to `True`.
+4.  **Consumption:** Frontend polls or re-fetches photos to display AI tags.
 
 ---
 
-## 4. Frontend Features & Integration
+## 5. Frontend Integration Guide
 
-### General Framework
-- **Technology**: React 18, TailwindCSS, Lucide Icons, Recharts.
-- **State Management**: Context API (`DataContext`) wraps the application to provide global access to Users, Events, and Photos.
-- **Offline Mode**: If the backend is unreachable, the frontend falls back to mock data (`MOCK_USERS`, `MOCK_EVENTS`, `MOCK_PHOTOS`).
+### Proxy Configuration (Vite)
+To avoid CORS issues and handle relative paths correctly during development:
+```typescript
+proxy: {
+  '/api': {
+    target: 'http://localhost:8000',
+    changeOrigin: true,
+  },
+  '/uploads': {
+    target: 'http://localhost:8000',
+    changeOrigin: true,
+  }
+}
+```
 
-### Feature Breakdown
+### Context & State
+*   **DataContext:** Centralizes state for `currentUser`, `activeEvent`, `photos`, and `users`.
+*   **Optimistic UI:** Selection toggles update local state immediately while sending async requests.
+*   **Navigation:**
+    *   `Dashboard` -> `Gallery` (via clickable stats).
+    *   `EventSelector` -> `Dashboard` (User flow).
+    *   `EventSwitcher` component allows switching active event without logging out.
 
-#### A. Authentication & Navigation
-- **Login Screen**: Simple email-based login.
-  - *Integration*: Calls `POST /auth/login`. If user exists, returns profile; if not, creates a new USER account.
-- **Role-Based Sidebar**: Dynamic menu items based on `currentUser.role` (ADMIN, PHOTOGRAPHER, USER).
-  - *Frontend Only*: Logic handled in `Sidebar.tsx`.
-
-#### B. Client/User View
-1. **Event Selector**:
-   - Allows users to search and select events they are assigned to.
-   - *Integration*: Filters global `events` list based on `currentUser.id`.
-2. **Dashboard**:
-   - Displays event statistics (Total Photos, AI Picks, People), AI Insights, and Payment Status.
-   - *Integration*: Derived from `GET /events` and `GET /events/{id}/photos`.
-3. **Gallery**:
-   - High-performance grid with lazy loading.
-   - **Filtering**: Tabs for 'All', 'AI Picks', 'People' (face clusters), 'Ceremony', 'Activity'.
-   - **Selection**: Click to select/deselect photos.
-   - *Integration*: `POST /photos/{id}/selection` (Optimistic UI update).
-4. **My Selections**:
-   - Review selected photos before submission.
-   - *Integration*: `POST /events/{id}/submit-selections` triggers the final workflow.
-5. **Profile & Family**:
-   - Manage avatar and add family members for AI face recognition referencing.
-   - *Integration*: `PUT /users/{id}` (Files are currently converted to blob URLs locally; production requires a file upload endpoint).
-
-#### C. Photographer View
-1. **Dashboard**:
-   - Business overview: Total Events, Revenue to Collect, Storage used.
-   - *Integration*: Aggregates data from `GET /events`.
-2. **Event Management**:
-   - **Create Event Wizard**: Multi-step form (Details -> Plan -> Payment).
-   - *Integration*: `POST /events`.
-   - **Event List**: Search, filter by date/status, toggle view (List/Grid).
-3. **Event Detail & Upload**:
-   - **Simulation Engine**: Simulates the "Analysis -> Optimization -> Upload -> Indexing" pipeline visually.
-   - **Upload**: Reads local files, creates metadata.
-   - *Integration*: `POST /events/{id}/photos` (Sends metadata to backend, which triggers Python AI Service).
-   - **Settings**: Edit event details (Name, Date).
-   - *Integration*: `PUT /events/{id}`.
-
-#### D. Admin View
-1. **Analytics Dashboard**:
-   - Visual charts (Revenue, Storage, Uptime) using Recharts.
-   - *Integration*: Derived from `GET /events`.
-2. **User Governance**:
-   - List all users/studios.
-   - Toggle Active/Disabled status.
-   - *Integration*: `GET /users`, `PATCH /users/{id}/status`.
-3. **Global Event Management**:
-   - View all platform events.
-   - Delete events (and cascade delete photos).
-   - *Integration*: `GET /events`, `DELETE /events/{id}`.
+### Key Workflows
+1.  **Creating an Event:**
+    *   Photographer enters Event Name, Date, Quote.
+    *   Adds Client List (Name, Email, Phone).
+    *   Backend resolves clients (finds existing or creates new) and links them.
+2.  **Uploading Photos:**
+    *   Files sent via `FormData`.
+    *   Progress bar tracks upload status.
+    *   "Indexing" phase waits for AI acknowledgement.
+3.  **User Selection:**
+    *   User logs in, selects event.
+    *   Browses Gallery (filtered by AI tags).
+    *   Selects photos -> "Submit for Editing".

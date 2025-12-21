@@ -1,3 +1,4 @@
+
 import os
 import shutil
 import uuid
@@ -6,7 +7,7 @@ from typing import List, Optional, Literal, Set, Union, Any, Dict
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Body, BackgroundTasks, UploadFile, File
+from fastapi import FastAPI, HTTPException, Body, BackgroundTasks, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, BeforeValidator, ConfigDict, field_validator
@@ -51,6 +52,23 @@ PhotoQuality = Literal['high', 'medium', 'low']
 EventPlan = Literal['BASIC', 'STANDARD', 'PRO']
 PaymentStatus = Literal['pending', 'partial', 'paid']
 OptimizationType = Literal['none', 'balanced', 'performance', 'high-quality']
+SelectionStatus = Literal['open', 'submitted', 'editing', 'review', 'accepted']
+PhotoReviewStatus = Literal['pending', 'approved', 'changes_requested']
+
+class Comment(BaseModel):
+    id: str
+    author: str
+    text: str
+    date: datetime
+    role: UserRole
+
+class EventTimeline(BaseModel):
+    selectionDeadline: Optional[datetime] = None
+    selectionSubmittedAt: Optional[datetime] = None
+    editingStartedAt: Optional[datetime] = None
+    deliveryEstimate: Optional[datetime] = None
+    reviewStartedAt: Optional[datetime] = None
+    finalizedAt: Optional[datetime] = None
 
 class FamilyMember(BaseModel):
     id: str
@@ -62,6 +80,7 @@ class SubEvent(BaseModel):
     id: str
     name: str
     date: datetime
+    endDate: Optional[datetime] = None
 
 class User(MongoBaseModel):
     email: str
@@ -87,6 +106,8 @@ class Event(MongoBaseModel):
     assignedUsers: List[str] = []
     subEvents: List[SubEvent] = []
     status: EventStatus = 'active'
+    selectionStatus: SelectionStatus = 'open'
+    timeline: EventTimeline = Field(default_factory=EventTimeline)
     price: Optional[float] = 0.0
     paidAmount: Optional[float] = 0.0
     paymentStatus: PaymentStatus = 'pending'
@@ -99,14 +120,17 @@ class Event(MongoBaseModel):
 
 class Photo(MongoBaseModel):
     url: str
+    editedUrl: Optional[str] = None
     eventId: str
+    subEventId: Optional[str] = None
     tags: List[str] = []
     people: List[str] = []
     isAiPick: bool = False
     quality: PhotoQuality = 'medium'
     category: Optional[str] = None
-    subEventId: Optional[str] = None
     isSelected: bool = False
+    reviewStatus: PhotoReviewStatus = 'pending'
+    comments: List[Comment] = []
     isAiProcessed: bool = False
     originalSize: Optional[int] = 0
     optimizedSize: Optional[int] = 0
@@ -145,6 +169,19 @@ class AssignUserRequest(BaseModel):
 
 class RemoveUserRequest(BaseModel):
     userId: str
+
+class WorkflowUpdate(BaseModel):
+    status: SelectionStatus
+    deliveryEstimate: Optional[datetime] = None
+    note: Optional[str] = None
+
+class CommentInput(BaseModel):
+    author: str
+    text: str
+    role: UserRole
+
+class ReviewStatusUpdate(BaseModel):
+    status: PhotoReviewStatus
 
 # --- Startup/Seeding ---
 
@@ -389,6 +426,49 @@ async def remove_user_from_event(id: str, payload: RemoveUserRequest):
     updated_event = await db.events.find_one({"_id": ObjectId(id)})
     return updated_event
 
+# --- Sub Events ---
+
+@app.post("/api/events/{id}/subevents", response_model=Event)
+async def add_sub_event(id: str, sub_event: SubEvent):
+    sub_event_dict = sub_event.model_dump()
+    # Generate ID if not present
+    if not sub_event_dict.get("id"):
+        sub_event_dict["id"] = f"se-{datetime.now().timestamp()}"
+        
+    await db.events.update_one(
+        {"_id": ObjectId(id)},
+        {"$push": {"subEvents": sub_event_dict}}
+    )
+    return await db.events.find_one({"_id": ObjectId(id)})
+
+# --- Workflow Management ---
+
+@app.patch("/api/events/{id}/workflow", response_model=Event)
+async def update_workflow(id: str, payload: WorkflowUpdate):
+    updates = {"selectionStatus": payload.status}
+    
+    # Update timeline based on status transition
+    now = datetime.now()
+    timeline_updates = {}
+    
+    if payload.status == 'submitted':
+        timeline_updates["timeline.selectionSubmittedAt"] = now
+    elif payload.status == 'editing':
+        timeline_updates["timeline.editingStartedAt"] = now
+    elif payload.status == 'review':
+        timeline_updates["timeline.reviewStartedAt"] = now
+    elif payload.status == 'accepted':
+        timeline_updates["timeline.finalizedAt"] = now
+        
+    if payload.deliveryEstimate:
+        timeline_updates["timeline.deliveryEstimate"] = payload.deliveryEstimate
+
+    if timeline_updates:
+        updates.update(timeline_updates)
+
+    await db.events.update_one({"_id": ObjectId(id)}, {"$set": updates})
+    return await db.events.find_one({"_id": ObjectId(id)})
+
 # --- Payment Handling ---
 @app.post("/api/events/{id}/payment", response_model=Event)
 async def record_payment(id: str, payload: PaymentRequest):
@@ -420,7 +500,12 @@ async def get_event_photos(id: str):
     return photos
 
 @app.post("/api/events/{id}/photos", response_model=List[Photo])
-async def upload_photos(id: str, files: List[UploadFile] = File(...), background_tasks: BackgroundTasks = None):
+async def upload_photos(
+    id: str, 
+    subEventId: Optional[str] = Form(None),
+    files: List[UploadFile] = File(...), 
+    background_tasks: BackgroundTasks = None
+):
     """
     Handles real file uploads:
     1. Saves file to disk in event-specific subfolder (uploads/{event_id}/).
@@ -460,6 +545,7 @@ async def upload_photos(id: str, files: List[UploadFile] = File(...), background
         new_photo = {
             "url": url,
             "eventId": id,
+            "subEventId": subEventId,
             "tags": [],
             "people": [],
             "isAiPick": False,
@@ -488,6 +574,53 @@ async def upload_photos(id: str, files: List[UploadFile] = File(...), background
     ids = result.inserted_ids
     created_photos = await db.photos.find({"_id": {"$in": ids}}).to_list(None)
     return created_photos
+
+@app.post("/api/photos/{id}/edit", response_model=Photo)
+async def upload_edited_photo(id: str, file: UploadFile = File(...)):
+    photo = await db.photos.find_one({"_id": ObjectId(id)})
+    if not photo:
+        raise HTTPException(status_code=404, detail="Photo not found")
+        
+    event_id = photo["eventId"]
+    event_upload_dir = UPLOAD_DIR / event_id
+    event_upload_dir.mkdir(parents=True, exist_ok=True)
+    
+    file_ext = os.path.splitext(file.filename)[1] or ".jpg"
+    safe_filename = f"edit_{uuid.uuid4()}{file_ext}"
+    file_path = event_upload_dir / safe_filename
+    
+    content = await file.read()
+    with open(file_path, "wb") as f:
+        f.write(content)
+        
+    edited_url = f"/uploads/{event_id}/{safe_filename}"
+    
+    await db.photos.update_one(
+        {"_id": ObjectId(id)}, 
+        {"$set": {"editedUrl": edited_url}}
+    )
+    return await db.photos.find_one({"_id": ObjectId(id)})
+
+@app.post("/api/photos/{id}/comment", response_model=Photo)
+async def add_comment(id: str, comment: CommentInput):
+    new_comment = {
+        "id": str(uuid.uuid4()),
+        "date": datetime.now(),
+        **comment.model_dump()
+    }
+    await db.photos.update_one(
+        {"_id": ObjectId(id)},
+        {"$push": {"comments": new_comment}}
+    )
+    return await db.photos.find_one({"_id": ObjectId(id)})
+
+@app.post("/api/photos/{id}/review-status", response_model=Photo)
+async def update_review_status(id: str, payload: ReviewStatusUpdate):
+    await db.photos.update_one(
+        {"_id": ObjectId(id)},
+        {"$set": {"reviewStatus": payload.status}}
+    )
+    return await db.photos.find_one({"_id": ObjectId(id)})
 
 @app.post("/api/photos/{id}/selection", response_model=Photo)
 async def toggle_selection(id: str):

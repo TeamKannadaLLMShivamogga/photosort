@@ -63,8 +63,13 @@ const GalleryView: React.FC<GalleryViewProps> = ({ initialTab }) => {
     if (selectedFilters.people.length > 0) {
       result = result.filter(p => p.people.some(person => selectedFilters.people.includes(person)));
     }
+    // Filter by Sub-Event (Ceremony)
     if (selectedFilters.ceremony.length > 0) {
-      result = result.filter(p => activeEvent?.subEvents.find(s => s.name === p.category && selectedFilters.ceremony.includes(s.name)));
+      // Logic updates: match against subEventId if available, fallback to category name match
+      result = result.filter(p => {
+          const subEvent = activeEvent?.subEvents.find(s => selectedFilters.ceremony.includes(s.name));
+          return (p.subEventId && subEvent && p.subEventId === subEvent.id) || (p.category && selectedFilters.ceremony.includes(p.category));
+      });
     }
     if (selectedFilters.activity.length > 0) {
       result = result.filter(p => selectedFilters.activity.includes(p.category));
@@ -86,7 +91,7 @@ const GalleryView: React.FC<GalleryViewProps> = ({ initialTab }) => {
     { id: 'all', label: 'All', icon: Grid2X2 },
     { id: 'ai', label: 'AI', icon: Sparkles },
     { id: 'people', label: 'People', icon: User },
-    { id: 'ceremony', label: 'Ceremony', icon: Calendar },
+    { id: 'ceremony', label: 'Sub-Events', icon: Calendar }, // Renamed from Ceremony
     { id: 'activity', label: 'Activity', icon: Tag },
   ];
 
@@ -199,8 +204,8 @@ const GalleryView: React.FC<GalleryViewProps> = ({ initialTab }) => {
         )}
       </div>
 
-      {/* Floating Action Bar - Optimized for mobile */}
-      {selectedPhotos.size > 0 && (
+      {/* Floating Action Bar - Only show if selection is OPEN */}
+      {selectedPhotos.size > 0 && activeEvent?.selectionStatus === 'open' && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 px-4 sm:px-6 py-3 bg-slate-900 text-white rounded-[1.5rem] sm:rounded-3xl shadow-2xl flex items-center gap-4 sm:gap-8 z-40 animate-in fade-in slide-in-from-bottom-6 duration-300 w-[90%] sm:w-auto justify-between">
           <div className="flex flex-col sm:border-r border-slate-700 sm:pr-8">
             <span className="text-[11px] sm:text-[12px] font-black tracking-tight">{selectedPhotos.size} SELECTED</span>

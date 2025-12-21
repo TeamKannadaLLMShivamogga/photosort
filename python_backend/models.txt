@@ -1,10 +1,11 @@
+
 """
 Data Models
 Defines the schema for Users, Events, and Photos using Pydantic.
 """
 
 from datetime import datetime
-from typing import List, Optional, Literal, Union, Any
+from typing import List, Optional, Literal, Union, Any, Dict
 from pydantic import BaseModel, Field, field_validator
 from .utils.mongo_helpers import MongoBaseModel, PyObjectId
 
@@ -16,6 +17,8 @@ PhotoQuality = Literal['high', 'medium', 'low']
 EventPlan = Literal['BASIC', 'STANDARD', 'PRO']
 PaymentStatus = Literal['pending', 'partial', 'paid']
 OptimizationType = Literal['none', 'balanced', 'performance', 'high-quality']
+SelectionStatus = Literal['open', 'submitted', 'editing', 'review', 'accepted']
+PhotoReviewStatus = Literal['pending', 'approved', 'changes_requested']
 
 # --- AI Analysis Sub-Models ---
 
@@ -73,6 +76,21 @@ class AiAnalysisResult(BaseModel):
 
 # --- Sub Models ---
 
+class Comment(BaseModel):
+    id: str
+    author: str
+    text: str
+    date: datetime
+    role: UserRole
+
+class EventTimeline(BaseModel):
+    selectionDeadline: Optional[datetime] = None
+    selectionSubmittedAt: Optional[datetime] = None
+    editingStartedAt: Optional[datetime] = None
+    deliveryEstimate: Optional[datetime] = None
+    reviewStartedAt: Optional[datetime] = None
+    finalizedAt: Optional[datetime] = None
+
 class FamilyMember(BaseModel):
     id: str
     name: str
@@ -83,12 +101,14 @@ class SubEvent(BaseModel):
     id: str
     name: str
     date: datetime
+    endDate: Optional[datetime] = None
 
 # --- Entity Models ---
 
 class User(MongoBaseModel):
     email: str
     name: str
+    phone: Optional[str] = None
     role: UserRole = 'USER'
     avatar: Optional[str] = None
     familyMembers: List[FamilyMember] = []
@@ -109,6 +129,8 @@ class Event(MongoBaseModel):
     assignedUsers: List[str] = []
     subEvents: List[SubEvent] = []
     status: EventStatus = 'active'
+    selectionStatus: SelectionStatus = 'open'
+    timeline: EventTimeline = Field(default_factory=EventTimeline)
     price: Optional[float] = 0.0
     paidAmount: Optional[float] = 0.0
     paymentStatus: PaymentStatus = 'pending'
@@ -121,14 +143,17 @@ class Event(MongoBaseModel):
 
 class Photo(MongoBaseModel):
     url: str
+    editedUrl: Optional[str] = None
     eventId: str
+    subEventId: Optional[str] = None
     tags: List[str] = []
     people: List[str] = []
     isAiPick: bool = False
     quality: PhotoQuality = 'medium'
     category: Optional[str] = None
-    subEventId: Optional[str] = None
     isSelected: bool = False
+    reviewStatus: PhotoReviewStatus = 'pending'
+    comments: List[Comment] = []
     isAiProcessed: bool = False
     originalSize: Optional[int] = 0
     optimizedSize: Optional[int] = 0
@@ -142,3 +167,16 @@ class LoginRequest(BaseModel):
 
 class PhotoUploadRequest(BaseModel):
     photos: List[Photo]
+
+class WorkflowUpdate(BaseModel):
+    status: SelectionStatus
+    deliveryEstimate: Optional[datetime] = None
+    note: Optional[str] = None
+
+class CommentInput(BaseModel):
+    author: str
+    text: str
+    role: UserRole
+
+class ReviewStatusUpdate(BaseModel):
+    status: PhotoReviewStatus

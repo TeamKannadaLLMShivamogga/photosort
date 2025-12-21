@@ -18,6 +18,8 @@ export enum EventPlan {
 }
 
 export type OptimizationType = 'none' | 'balanced' | 'performance' | 'high-quality';
+export type SelectionStatus = 'open' | 'submitted' | 'editing' | 'review' | 'accepted';
+export type PhotoReviewStatus = 'pending' | 'approved' | 'changes_requested';
 
 export interface FamilyMember {
   id: string;
@@ -26,15 +28,22 @@ export interface FamilyMember {
   referencePhoto?: string;
 }
 
+export interface Comment {
+  id: string;
+  author: string;
+  text: string;
+  date: string;
+  role: UserRole;
+}
+
 export interface User {
   id: string;
   email: string;
   name: string;
   role: UserRole;
-  phone?: string; // Added phone field
+  phone?: string;
   avatar?: string;
   familyMembers?: FamilyMember[];
-  // Subscription Management Fields
   subscriptionTier?: SubscriptionTier;
   subscriptionExpiry?: string;
   joinDate?: string;
@@ -47,22 +56,35 @@ export interface User {
 export interface Photo {
   id: string;
   url: string;
+  editedUrl?: string; // For the edited version
   eventId: string;
+  subEventId?: string;
   tags: string[];
   people: string[];
   isAiPick: boolean;
   quality: 'high' | 'medium' | 'low';
   category: string;
-  subEventId?: string;
   isSelected?: boolean;
   originalSize?: number;
   optimizedSize?: number;
+  reviewStatus?: PhotoReviewStatus;
+  comments?: Comment[];
 }
 
 export interface SubEvent {
   id: string;
   name: string;
-  date: string;
+  date: string; // Used as display date or start date
+  endDate?: string;
+}
+
+export interface EventTimeline {
+  selectionDeadline?: string;
+  selectionSubmittedAt?: string;
+  editingStartedAt?: string;
+  deliveryEstimate?: string;
+  reviewStartedAt?: string;
+  finalizedAt?: string;
 }
 
 export interface Event {
@@ -75,13 +97,15 @@ export interface Event {
   assignedUsers: string[];
   subEvents: SubEvent[];
   status: 'active' | 'completed' | 'closed';
+  selectionStatus: SelectionStatus; // Workflow State
+  timeline?: EventTimeline;
   price?: number;
   paidAmount?: number;
   paymentStatus?: 'pending' | 'partial' | 'paid';
   deadline?: string;
   optimizationSetting?: OptimizationType;
-  clientEmail?: string; // Legacy support
-  clientPhone?: string; // Legacy support
+  clientEmail?: string;
+  clientPhone?: string;
   plan?: EventPlan;
   serviceFee?: number;
 }
