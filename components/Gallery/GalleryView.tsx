@@ -2,7 +2,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { 
   Grid2X2, Sparkles, User, Calendar, Tag, Check, Filter, 
-  X, ChevronRight, Star, CheckCircle2, Image as ImageIcon, RotateCcw
+  X, ChevronRight, Star, CheckCircle2, Image as ImageIcon, RotateCcw, Trash2
 } from 'lucide-react';
 import { useData } from '../../context/DataContext';
 import { Photo } from '../../types';
@@ -11,10 +11,11 @@ type TabType = 'all' | 'ai' | 'people' | 'ceremony' | 'activity';
 
 interface GalleryViewProps {
   initialTab?: string;
+  isPhotographer?: boolean;
 }
 
-const GalleryView: React.FC<GalleryViewProps> = ({ initialTab }) => {
-  const { photos, activeEvent, selectedPhotos, togglePhotoSelection, submitSelections } = useData();
+const GalleryView: React.FC<GalleryViewProps> = ({ initialTab, isPhotographer }) => {
+  const { photos, activeEvent, selectedPhotos, togglePhotoSelection, submitSelections, deletePhoto } = useData();
   const [activeTab, setActiveTab] = useState<TabType>('all');
   const [selectedFilters, setSelectedFilters] = useState<{
     people: string[];
@@ -213,6 +214,29 @@ const GalleryView: React.FC<GalleryViewProps> = ({ initialTab }) => {
                 }`}>
                   <Check className="w-3 h-3" />
                 </div>
+
+                {isPhotographer && (
+                  <button 
+                    onClick={(e) => {
+                       e.stopPropagation();
+                       if (photo.isSelected) {
+                           alert("Cannot delete a selected photo.");
+                           return;
+                       }
+                       if (activeEvent?.selectionStatus !== 'open') {
+                           alert("Project is locked/submitted. Cannot delete photos.");
+                           return;
+                       }
+                       if (confirm("Delete this photo permanently? This action cannot be undone.")) {
+                          deletePhoto(photo.id);
+                       }
+                    }}
+                    className="absolute bottom-1.5 right-1.5 p-1.5 bg-white text-rose-500 rounded-full shadow-lg opacity-0 group-hover:opacity-100 hover:bg-rose-50 transition-all z-20 active:scale-90"
+                    title="Delete Photo"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                  </button>
+                )}
               </div>
             ))}
           </div>

@@ -39,6 +39,7 @@ interface DataContextType {
   updatePhotoReviewStatus: (photoId: string, status: 'approved' | 'changes_requested') => Promise<void>;
   resolveComment: (photoId: string, commentId: string) => Promise<void>;
   approveAllEdits: (eventId: string) => Promise<void>;
+  deletePhoto: (photoId: string) => Promise<void>;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -419,13 +420,25 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
   };
 
+  const deletePhoto = async (photoId: string) => {
+      await fetch(`${API_URL}/photos/${photoId}`, { method: 'DELETE' });
+      setPhotos(prev => prev.filter(p => p.id !== photoId));
+      if (selectedPhotos.has(photoId)) {
+          setSelectedPhotos(prev => {
+              const next = new Set(prev);
+              next.delete(photoId);
+              return next;
+          });
+      }
+  };
+
   return (
     <DataContext.Provider value={{
       currentUser, users, events, photos, notifications, activeEvent, selectedPhotos, isLoading,
       login, logout, setActiveEvent, togglePhotoSelection, submitSelections,
       addEvent, updateEvent, deleteEvent, addUser, updateUser, deleteUser, addSubEvent, removeSubEvent,
       toggleUserStatus, refreshPhotos, recordPayment, assignUserToEvent, removeUserFromEvent,
-      updateEventWorkflow, uploadEditedPhoto, uploadBulkEditedPhotos, addPhotoComment, updatePhotoReviewStatus, resolveComment, approveAllEdits
+      updateEventWorkflow, uploadEditedPhoto, uploadBulkEditedPhotos, addPhotoComment, updatePhotoReviewStatus, resolveComment, approveAllEdits, deletePhoto
     }}>
       {children}
     </DataContext.Provider>

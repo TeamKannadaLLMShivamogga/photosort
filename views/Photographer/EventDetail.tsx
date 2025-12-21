@@ -509,7 +509,7 @@ const PhotographerEventDetail: React.FC<{ onNavigate: (view: string) => void, in
                         <UploadCloud className="w-4 h-4" /> Upload Raw Images
                     </button>
                 </div>
-                <GalleryView />
+                <GalleryView isPhotographer={true} />
             </div>
         )}
         
