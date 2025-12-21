@@ -91,6 +91,20 @@ const PhotographerEventDetail: React.FC<{ onNavigate: (view: string) => void, in
       "https://images.unsplash.com/photo-1529636721647-781d6605c91c?q=80&w=2070"
     ];
 
+    const createMockPhoto = (index: number) => {
+       // Minimal data: Let AI service fill in the tags/people
+       return {
+            url: stockImages[index % stockImages.length],
+            quality: 'high',
+            eventId: activeEvent.id,
+            // Send empty/default values for AI to populate
+            tags: [],
+            people: [],
+            category: "Unsorted",
+            isAiPick: false
+        } as Partial<Photo>;
+    };
+
     if (fileArray.length > 0) {
       for (let i = 0; i < fileArray.length; i++) {
         const file = fileArray[i];
@@ -109,15 +123,7 @@ const PhotographerEventDetail: React.FC<{ onNavigate: (view: string) => void, in
           setStats(s => ({ ...s, processedCount: i + 1 }));
         }
         
-        photosToUpload.push({
-            url: stockImages[i % stockImages.length], // Fallback to stock for persistent viewing
-            category: i % 2 === 0 ? "Ceremony" : "Candid",
-            quality: 'high',
-            isAiPick: Math.random() > 0.7,
-            tags: ['new-upload', 'processed'],
-            people: [],
-            eventId: activeEvent.id
-        });
+        photosToUpload.push(createMockPhoto(i));
         
         setUploadProgress(Math.round(((i + 1) / totalFiles) * 100));
       }
@@ -130,15 +136,7 @@ const PhotographerEventDetail: React.FC<{ onNavigate: (view: string) => void, in
         totalSavedBytes += fakeSaved;
         setStats(s => ({ ...s, processedCount: i, savedSize: totalSavedBytes }));
         
-        photosToUpload.push({
-            url: stockImages[i % stockImages.length],
-            category: i % 2 === 0 ? "Ceremony" : "Candid",
-            quality: 'high',
-            isAiPick: Math.random() > 0.7,
-            tags: ['simulation', 'processed'],
-            people: [],
-            eventId: activeEvent.id
-        });
+        photosToUpload.push(createMockPhoto(i));
 
         setUploadProgress(Math.round((i / totalFiles) * 100));
         await new Promise(r => setTimeout(r, 120));
@@ -156,7 +154,8 @@ const PhotographerEventDetail: React.FC<{ onNavigate: (view: string) => void, in
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ photos: photosToUpload })
         });
-        await refreshPhotos();
+        // We do NOT refresh immediately here to allow user to see "Indexing" state
+        // In real app, we might poll or wait for socket, but here we'll wait a bit then refresh
     } catch (e) {
         console.error("Upload failed", e);
     }
@@ -166,15 +165,17 @@ const PhotographerEventDetail: React.FC<{ onNavigate: (view: string) => void, in
       await new Promise(r => setTimeout(r, 40));
     }
 
-    // Stage 4: Indexing & AI People Detection
+    // Stage 4: Indexing & AI People Detection (Simulated UI wait for Python service)
     setUploadStage('indexing');
     setUploadProgress(0);
-    const aiMessages = ['Clustering faces...', 'Applying color tags...', 'Geo-spatial tagging...', 'Generating smart thumbnails...'];
+    const aiMessages = ['Triggering Python AI Service...', 'Clustering faces...', 'Applying color tags...', 'Finalizing metadata...'];
     for (let i = 0; i < aiMessages.length; i++) {
       setCurrentFileName(aiMessages[i]);
       setUploadProgress((i + 1) * 25);
-      await new Promise(r => setTimeout(r, 400));
+      await new Promise(r => setTimeout(r, 800)); // Slightly longer wait to give Python service time
     }
+    
+    await refreshPhotos(); // Now fetch the AI-processed tags
 
     setIsUploading(false);
     setUploadProgress(0);

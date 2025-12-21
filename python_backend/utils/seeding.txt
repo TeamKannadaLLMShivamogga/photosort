@@ -1,0 +1,75 @@
+"""
+Database Seeding Utility
+Populates the MongoDB instance with initial mock data if empty.
+"""
+
+from datetime import datetime
+from motor.motor_asyncio import AsyncIOMotorDatabase
+from ..models import User, Event, SubEvent
+
+async def seed_data(db: AsyncIOMotorDatabase):
+    """
+    Checks if users exist, and if not, creates default Admin, Photographer, and User accounts
+    along with a sample Event.
+    """
+    if await db.users.count_documents({}) > 0:
+        return
+    
+    print("Seeding Database...")
+    
+    # Create Admin
+    admin = User(
+        email="admin@photosort.com",
+        name="Admin User",
+        role="ADMIN",
+        avatar="https://ui-avatars.com/api/?name=Admin&background=000&color=fff"
+    )
+    res_admin = await db.users.insert_one(admin.model_dump(by_alias=True, exclude=["id"]))
+    
+    # Create Photographer
+    photographer = User(
+        email="photographer@photosort.com",
+        name="John Doe Studio",
+        role="PHOTOGRAPHER",
+        avatar="https://ui-avatars.com/api/?name=John+Doe&background=10B981&color=fff",
+        subscriptionTier="PRO",
+        subscriptionExpiry=datetime(2025, 12, 31),
+        totalEventsCount=1,
+        totalPhotosCount=12,
+        totalUsersCount=1
+    )
+    res_photog = await db.users.insert_one(photographer.model_dump(by_alias=True, exclude=["id"]))
+    photog_id = str(res_photog.inserted_id)
+
+    # Create User
+    client_user = User(
+        email="user@photosort.com",
+        name="Rohan & Priya",
+        role="USER",
+        avatar="https://ui-avatars.com/api/?name=Rohan+Priya&background=random"
+    )
+    res_client = await db.users.insert_one(client_user.model_dump(by_alias=True, exclude=["id"]))
+    client_id = str(res_client.inserted_id)
+
+    # Create Event
+    event_date = datetime.now()
+    event = Event(
+        name="Rohan Weds Priya - The Royal Wedding",
+        date=event_date,
+        photographerId=photog_id,
+        coverImage="https://images.unsplash.com/photo-1519741497674-611481863552?q=80&w=2070&auto=format&fit=crop",
+        photoCount=0,
+        assignedUsers=[client_id],
+        status='active',
+        price=150000,
+        paidAmount=75000,
+        paymentStatus='partial',
+        plan='PRO',
+        subEvents=[
+            SubEvent(id="se-1", name="Haldi", date=event_date),
+            SubEvent(id="se-2", name="Wedding", date=event_date),
+            SubEvent(id="se-3", name="Reception", date=event_date)
+        ]
+    )
+    await db.events.insert_one(event.model_dump(by_alias=True, exclude=["id"]))
+    print("Seeding Complete.")

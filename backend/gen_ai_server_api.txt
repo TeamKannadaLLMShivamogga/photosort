@@ -1,0 +1,84 @@
+# PhotoSort Pro - Gen AI Server (FastAPI)
+**Role:** AI Processing, Face Clustering, Metadata Tagging.
+**Port:** 8001
+**Database:** Accesses the same MongoDB instance as Master Backend.
+
+---
+
+## 1. Core Features
+1.  **Asynchronous Processing:** Accepts trigger requests and processes images in the background to avoid blocking the Master Backend.
+2.  **Face Detection & Clustering:**
+    *   Scans photos for faces.
+    *   Clusters similar faces.
+    *   Matches faces against `User.familyMembers` reference photos (stored in DB).
+3.  **Smart Tagging:** Assigns tags (e.g., "Wedding", "Ceremony", "Candid", "Outdoors") based on image content.
+4.  **AI Curation:** assign `isAiPick = True` based on image quality scores (focus, lighting, composition).
+
+---
+
+## 2. Pydantic Models
+
+```python
+from pydantic import BaseModel
+
+class ProcessEventRequest(BaseModel):
+    # The ID is passed in the URL, but payload can optionally carry config
+    force_reprocess: bool = False
+
+class AiProcessResponse(BaseModel):
+    message: str
+    event_id: str
+    tasks_queued: int
+```
+
+---
+
+## 3. API Endpoints
+
+### A. Processing Triggers
+
+| Method | Endpoint | Description | Request | Response |
+| :--- | :--- | :--- | :--- | :--- |
+| `POST` | `/process-event/{event_id}` | **The Main Trigger.** <br> 1. Receives Event ID. <br> 2. Queries DB for photos where `eventId == event_id` AND `isAiProcessed == False`. <br> 3. Starts background task to process images. | `ProcessEventRequest` (Optional) | `AiProcessResponse` |
+
+### B. System
+
+| Method | Endpoint | Description | Request | Response |
+| :--- | :--- | :--- | :--- | :--- |
+| `GET` | `/health` | Health check to ensure AI models are loaded and DB is connected. | - | `{"status": "ok", "gpu": bool}` |
+
+---
+
+## 4. Internal Logic Flow (Background Task)
+
+When `/process-event/{event_id}` is called:
+
+1.  **Fetch Data:**
+    *   Retrieve the `Event` document to get context (e.g., Event Type: Wedding).
+    *   Retrieve the `User` (Client) document to get `familyMembers` reference photos.
+    *   Retrieve all `Photo` documents for the event that need processing.
+
+2.  **Image Analysis Loop:**
+    *   For each photo:
+        *   **Quality Check:** Calculate sharpness/blur score. If > Threshold, mark `isAiPick = True`.
+        *   **Tagging:** Use a lightweight CLIP or ResNet model to generate tags (e.g., "Food", "Decor", "Group").
+        *   **Face Matching:**
+            *   Detect faces.
+            *   Compare face embeddings against `familyMembers`.
+            *   If match found -> Add Name to `people` array.
+            *   If no match but face is prominent -> Add "Guest" or Cluster ID.
+
+3.  **Database Update:**
+    *   Update the specific `Photo` document in MongoDB:
+        ```json
+        {
+          "tags": ["..."],
+          "people": ["..."],
+          "isAiPick": true/false,
+          "isAiProcessed": true
+        }
+        ```
+    *   Update `Event` photo count if necessary.
+
+4.  **Completion:**
+    *   (Optional) Log completion or send webhook back to Master Backend (not strictly required if sharing DB state).

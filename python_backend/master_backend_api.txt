@@ -1,0 +1,139 @@
+# PhotoSort Pro - Master Backend (FastAPI)
+**Role:** Primary API Gateway, Database Management, User/Event Orchestration.
+**Port:** 8000
+**Database:** MongoDB
+
+---
+
+## 1. Core Features
+1.  **User Management:** Auth, profile updates, family member mapping, and role-based access control (Admin/Photographer/User).
+2.  **Event Orchestration:** CRUD for events, sub-event management, financial tracking, and status updates.
+3.  **Photo Indexing:** Receives metadata from client uploads, stores it, and triggers the Gen AI Service.
+4.  **Selection Workflow:** Handles client photo selections and submission status.
+
+---
+
+## 2. Pydantic Models (Schemas)
+
+```python
+from typing import List, Optional, Literal
+from datetime import datetime
+from pydantic import BaseModel, Field
+
+# --- Enums ---
+UserRole = Literal['ADMIN', 'PHOTOGRAPHER', 'USER']
+SubscriptionTier = Literal['FREE', 'PRO', 'STUDIO']
+EventStatus = Literal['active', 'completed', 'closed']
+PhotoQuality = Literal['high', 'medium', 'low']
+EventPlan = Literal['BASIC', 'STANDARD', 'PRO']
+PaymentStatus = Literal['pending', 'partial', 'paid']
+OptimizationType = Literal['none', 'balanced', 'performance', 'high-quality']
+
+# --- Sub Models ---
+class FamilyMember(BaseModel):
+    id: str
+    name: str
+    relation: str
+    referencePhoto: Optional[str] = None
+
+class SubEvent(BaseModel):
+    id: str
+    name: str
+    date: datetime
+
+# --- Entity Models ---
+class User(BaseModel):
+    id: Optional[str] = Field(alias="_id", default=None)
+    email: str
+    name: str
+    role: UserRole = 'USER'
+    avatar: Optional[str] = None
+    familyMembers: List[FamilyMember] = []
+    subscriptionTier: SubscriptionTier = 'FREE'
+    subscriptionExpiry: Optional[datetime] = None
+    isActive: bool = True
+    joinDate: Optional[datetime] = Field(default_factory=datetime.now)
+    # Computed fields
+    totalEventsCount: int = 0
+    totalPhotosCount: int = 0
+    totalUsersCount: int = 0
+
+class Event(BaseModel):
+    id: Optional[str] = Field(alias="_id", default=None)
+    name: str
+    date: datetime
+    photographerId: str
+    coverImage: str
+    photoCount: int = 0
+    assignedUsers: List[str] = []
+    subEvents: List[SubEvent] = []
+    status: EventStatus = 'active'
+    price: Optional[float] = 0.0
+    paidAmount: Optional[float] = 0.0
+    paymentStatus: PaymentStatus = 'pending'
+    plan: EventPlan = 'BASIC'
+    clientEmail: Optional[str] = None
+    clientPhone: Optional[str] = None
+    serviceFee: Optional[float] = 0.0
+    deadline: Optional[datetime] = None
+    optimizationSetting: OptimizationType = 'balanced'
+
+class Photo(BaseModel):
+    id: Optional[str] = Field(alias="_id", default=None)
+    url: str
+    eventId: str
+    tags: List[str] = []
+    people: List[str] = []
+    isAiPick: bool = False
+    quality: PhotoQuality = 'medium'
+    category: Optional[str] = None
+    subEventId: Optional[str] = None
+    isSelected: bool = False
+    isAiProcessed: bool = False
+    originalSize: Optional[int] = 0
+    optimizedSize: Optional[int] = 0
+
+# --- Request/Response DTOs ---
+
+class LoginRequest(BaseModel):
+    email: str
+
+class PhotoUploadRequest(BaseModel):
+    photos: List[Photo]
+
+class GenericResponse(BaseModel):
+    message: str
+```
+
+---
+
+## 3. API Endpoints
+
+### A. Authentication & Users
+
+| Method | Endpoint | Description | Request | Response |
+| :--- | :--- | :--- | :--- | :--- |
+| `POST` | `/api/auth/login` | Authenticates user by email. Creates account if email doesn't exist. | `LoginRequest` | `User` |
+| `GET` | `/api/users` | Lists all users (Admin/Dashboard usage). | - | `List[User]` |
+| `POST` | `/api/users` | Manually create a user. | `User` (Partial) | `User` |
+| `PUT` | `/api/users/{id}` | Update profile (Name, Avatar, Family Members). | `User` (Partial) | `User` |
+| `DELETE` | `/api/users/{id}` | Hard delete a user. | - | `GenericResponse` |
+| `PATCH` | `/api/users/{id}/status` | Toggle `isActive` status (Ban/Unban). | - | `User` |
+
+### B. Event Management
+
+| Method | Endpoint | Description | Request | Response |
+| :--- | :--- | :--- | :--- | :--- |
+| `GET` | `/api/events` | List all events. Filters usually applied on frontend. | - | `List[Event]` |
+| `POST` | `/api/events` | Create a new event. Auto-creates default sub-event. | `Event` (Partial) | `Event` |
+| `PUT` | `/api/events/{id}` | Update event details (Status, Payment, SubEvents, Optimization). | `Event` (Partial) | `Event` |
+| `DELETE` | `/api/events/{id}` | Delete event and cascade delete photos. | - | `GenericResponse` |
+
+### C. Photo Workflow
+
+| Method | Endpoint | Description | Request | Response |
+| :--- | :--- | :--- | :--- | :--- |
+| `GET` | `/api/events/{id}/photos` | Fetch all photos for an event. | - | `List[Photo]` |
+| `POST` | `/api/events/{id}/photos` | **CRITICAL:** 1. Bulk inserts photos. <br> 2. Sets `isAiProcessed=False`. <br> 3. Calls Gen AI Service (`POST /process-event/{id}`). | `PhotoUploadRequest` | `List[Photo]` |
+| `POST` | `/api/photos/{id}/selection` | Toggles `isSelected` status. | - | `Photo` |
+| `POST` | `/api/events/{id}/submit-selections` | Finalizes selection. Sends mocked email to photographer. | - | `GenericResponse` |

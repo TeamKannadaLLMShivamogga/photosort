@@ -9,6 +9,7 @@ dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 8000;
+const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8001';
 
 // Middleware
 app.use(cors());
@@ -76,6 +77,16 @@ router.put('/users/:id', async (req, res) => {
   try {
     const user = await User.findByIdAndUpdate(req.params.id, req.body, { new: true });
     res.json(user);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.delete('/users/:id', async (req, res) => {
+  try {
+    await User.findByIdAndDelete(req.params.id);
+    // Optional: Cleanup events/photos owned by this user if necessary
+    res.json({ message: "User deleted" });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -156,8 +167,12 @@ router.post('/events/:id/photos', async (req, res) => {
         return res.status(400).json({ error: "Expected an array of photos" });
     }
 
-    // Add eventId to all photos
-    const photosWithEvent = photos.map(p => ({ ...p, eventId }));
+    // Add eventId to all photos and set isAiProcessed to false
+    const photosWithEvent = photos.map(p => ({ 
+      ...p, 
+      eventId,
+      isAiProcessed: false // Ensure AI service picks this up
+    }));
     
     const created = await Photo.insertMany(photosWithEvent);
     
@@ -165,6 +180,12 @@ router.post('/events/:id/photos', async (req, res) => {
     const count = await Photo.countDocuments({ eventId });
     await Event.findByIdAndUpdate(eventId, { photoCount: count });
     
+    // Trigger Python AI Service (Fire and forget)
+    // In production, use a message queue like RabbitMQ or Redis
+    fetch(`${AI_SERVICE_URL}/process-event/${eventId}`, {
+      method: 'POST'
+    }).catch(err => console.error("Failed to trigger AI service:", err.message));
+
     res.json(created);
   } catch (error) {
     res.status(500).json({ error: error.message });

@@ -1,0 +1,144 @@
+"""
+Data Models
+Defines the schema for Users, Events, and Photos using Pydantic.
+"""
+
+from datetime import datetime
+from typing import List, Optional, Literal, Union, Any
+from pydantic import BaseModel, Field, field_validator
+from .utils.mongo_helpers import MongoBaseModel, PyObjectId
+
+# --- Enums ---
+UserRole = Literal['ADMIN', 'PHOTOGRAPHER', 'USER']
+SubscriptionTier = Literal['FREE', 'PRO', 'STUDIO']
+EventStatus = Literal['active', 'completed', 'closed']
+PhotoQuality = Literal['high', 'medium', 'low']
+EventPlan = Literal['BASIC', 'STANDARD', 'PRO']
+PaymentStatus = Literal['pending', 'partial', 'paid']
+OptimizationType = Literal['none', 'balanced', 'performance', 'high-quality']
+
+# --- AI Analysis Sub-Models ---
+
+class FaceAnalysis(BaseModel):
+    num_smiling: Optional[int] = 0
+    all_smiling: Optional[bool] = False
+    any_eyes_closed: Optional[bool] = False
+    all_looking_at_camera: Optional[bool] = False
+
+class QualityAnalysis(BaseModel):
+    blurry: Optional[bool] = False
+    motion_blur: Optional[bool] = False
+    out_of_focus: Optional[bool] = False
+    over_exposed: Optional[bool] = False
+    under_exposed: Optional[bool] = False
+    low_light: Optional[bool] = False
+    grainy: Optional[bool] = False
+    sharp_subject: Optional[bool] = False
+
+class FramingAnalysis(BaseModel):
+    centered_subject: Optional[bool] = False
+    cropped_faces: Optional[bool] = False
+    tilted_angle: Optional[bool] = False
+    symmetry: Optional[bool] = False
+    cluttered_background: Optional[bool] = False
+
+class AttireAnalysis(BaseModel):
+    bride_present: Optional[bool] = False
+    groom_present: Optional[bool] = False
+    traditional_wear: Optional[bool] = False
+    bridal_lehenga_detected: Optional[bool] = False
+    sherwani_detected: Optional[bool] = False
+    mehendi_visible: Optional[bool] = False
+    haldi_on_skin: Optional[bool] = False
+
+class AiAnalysisResult(BaseModel):
+    num_of_people: Optional[int] = 0
+    event: Optional[Union[List[str], str]] = []
+    type: Optional[Union[List[str], str]] = []
+    faces: Optional[FaceAnalysis] = Field(default_factory=FaceAnalysis)
+    quality: Optional[QualityAnalysis] = Field(default_factory=QualityAnalysis)
+    framing: Optional[FramingAnalysis] = Field(default_factory=FramingAnalysis)
+    emotions: Optional[List[str]] = []
+    attire: Optional[AttireAnalysis] = Field(default_factory=AttireAnalysis)
+    color_theme: Optional[Union[List[str], str]] = []
+    decor_cues: Optional[List[str]] = []
+    notes: Optional[str] = ""
+
+    # Validators to normalize strings to lists
+    @field_validator('event', 'type', 'color_theme', mode='before')
+    def normalize_to_list(cls, v):
+        if isinstance(v, str):
+            return [v]
+        return v or []
+
+# --- Sub Models ---
+
+class FamilyMember(BaseModel):
+    id: str
+    name: str
+    relation: str
+    referencePhoto: Optional[str] = None
+
+class SubEvent(BaseModel):
+    id: str
+    name: str
+    date: datetime
+
+# --- Entity Models ---
+
+class User(MongoBaseModel):
+    email: str
+    name: str
+    role: UserRole = 'USER'
+    avatar: Optional[str] = None
+    familyMembers: List[FamilyMember] = []
+    subscriptionTier: SubscriptionTier = 'FREE'
+    subscriptionExpiry: Optional[datetime] = None
+    isActive: bool = True
+    joinDate: Optional[datetime] = Field(default_factory=datetime.now)
+    totalEventsCount: int = 0
+    totalPhotosCount: int = 0
+    totalUsersCount: int = 0
+
+class Event(MongoBaseModel):
+    name: str
+    date: datetime
+    photographerId: str
+    coverImage: str
+    photoCount: int = 0
+    assignedUsers: List[str] = []
+    subEvents: List[SubEvent] = []
+    status: EventStatus = 'active'
+    price: Optional[float] = 0.0
+    paidAmount: Optional[float] = 0.0
+    paymentStatus: PaymentStatus = 'pending'
+    plan: EventPlan = 'BASIC'
+    clientEmail: Optional[str] = None
+    clientPhone: Optional[str] = None
+    serviceFee: Optional[float] = 0.0
+    deadline: Optional[datetime] = None
+    optimizationSetting: OptimizationType = 'balanced'
+
+class Photo(MongoBaseModel):
+    url: str
+    eventId: str
+    tags: List[str] = []
+    people: List[str] = []
+    isAiPick: bool = False
+    quality: PhotoQuality = 'medium'
+    category: Optional[str] = None
+    subEventId: Optional[str] = None
+    isSelected: bool = False
+    isAiProcessed: bool = False
+    originalSize: Optional[int] = 0
+    optimizedSize: Optional[int] = 0
+    # New detailed AI data
+    aiAnalysis: Optional[AiAnalysisResult] = None
+
+# --- Request Objects ---
+
+class LoginRequest(BaseModel):
+    email: str
+
+class PhotoUploadRequest(BaseModel):
+    photos: List[Photo]

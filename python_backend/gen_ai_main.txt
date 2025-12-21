@@ -1,0 +1,346 @@
+"""
+PhotoSort Pro - Gen AI Service (FastAPI)
+
+This module handles the heavy lifting for image intelligence.
+It functions as a microservice running on port 8001.
+
+Capabilities:
+1. Qwen-VL Integration: Uses Vision Language Model for real image analysis.
+2. Fallback Logic: Switches to mock processing if Model is not found or GPU is unavailable.
+3. Data Enrichment: Updates Photo documents in MongoDB with AI-derived metadata.
+
+To run:
+1. Rename to main.py
+2. pip install -r requirements.txt
+3. uvicorn main:app --reload --port 8001
+"""
+
+import os
+import asyncio
+import random
+import logging
+import json
+import re
+from typing import Optional, Dict
+from io import BytesIO
+
+from fastapi import FastAPI, BackgroundTasks
+from pydantic import BaseModel
+from motor.motor_asyncio import AsyncIOMotorClient
+from bson import ObjectId
+from dotenv import load_dotenv
+
+# AI Imports
+import requests
+from PIL import Image
+try:
+    import torch
+    from transformers import AutoModelForCausalLM, AutoTokenizer
+except ImportError:
+    torch = None
+    AutoModelForCausalLM = None
+    AutoTokenizer = None
+
+# Local imports (assuming file structure)
+from .models import AiAnalysisResult
+
+load_dotenv()
+
+# Setup Logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("GenAIService")
+
+MONGO_URL = os.getenv("MONGODB_URL", "mongodb://localhost:27017")
+DB_NAME = "photosort"
+
+client = AsyncIOMotorClient(MONGO_URL)
+db = client[DB_NAME]
+
+app = FastAPI()
+
+# --- Configuration & Model Loading ---
+
+PROMPTS_FILE = "prompts.txt"
+PROMPTS: Dict[str, str] = {}
+
+def load_prompts():
+    """
+    Loads prompt templates from a text file using a section-based format.
+    Example format:
+    [key_name]
+    Prompt content goes here...
+    """
+    default_prompts = {
+        "analysis_prompt": "Describe this image with tags."
+    }
+    
+    if not os.path.exists(PROMPTS_FILE):
+        logger.warning(f"{PROMPTS_FILE} not found. Using defaults.")
+        return default_prompts
+
+    loaded = {}
+    current_key = None
+    current_lines = []
+
+    with open(PROMPTS_FILE, 'r') as f:
+        for line in f:
+            stripped = line.strip()
+            if stripped.startswith("[") and stripped.endswith("]"):
+                if current_key:
+                    loaded[current_key] = "\n".join(current_lines).strip()
+                current_key = stripped[1:-1]
+                current_lines = []
+            else:
+                current_lines.append(line)
+        
+        # Save last section
+        if current_key:
+            loaded[current_key] = "\n".join(current_lines).strip()
+
+    return {**default_prompts, **loaded}
+
+PROMPTS = load_prompts()
+
+# Global Model Variables
+model = None
+tokenizer = None
+
+def initialize_model():
+    """Attempts to load Qwen-VL. Falls back to None if failed."""
+    global model, tokenizer
+    if not torch:
+        logger.warning("Torch/Transformers not installed. Running in MOCK mode.")
+        return
+
+    try:
+        logger.info("Loading Qwen-VL-Chat Model... (This may take time)")
+        # Note: trust_remote_code is required for Qwen
+        tokenizer = AutoTokenizer.from_pretrained("Qwen/Qwen-VL-Chat", trust_remote_code=True)
+        
+        # Determine device (CUDA > MPS > CPU)
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        if torch.backends.mps.is_available():
+            device = "mps"
+            
+        model = AutoModelForCausalLM.from_pretrained(
+            "Qwen/Qwen-VL-Chat", 
+            device_map="auto" if device == "cuda" else None, 
+            trust_remote_code=True,
+            bf16=True if device == "cuda" else False,
+            fp16=False
+        ).eval()
+        
+        if device != "cuda":
+            model.to(device)
+            
+        logger.info(f"Qwen Model loaded successfully on {device}.")
+    except Exception as e:
+        logger.error(f"Failed to load Qwen Model: {e}")
+        logger.warning("Falling back to MOCK AI processing.")
+        model = None
+        tokenizer = None
+
+# Initialize on startup
+initialize_model()
+
+# --- Pydantic Models ---
+
+class ProcessEventRequest(BaseModel):
+    force_reprocess: bool = False
+
+class AiProcessResponse(BaseModel):
+    message: str
+    event_id: str
+    tasks_queued: int
+
+# --- Processing Logic ---
+
+async def mock_process_photo(photo, event_subevents):
+    """Simulates AI processing with random data."""
+    await asyncio.sleep(0.1) # Simulate latency
+    
+    # Simulate the detailed structure
+    possible_events = ["haldi", "mehendi", "sangeet", "reception", "baraat"]
+    possible_types = ["candid", "portrait", "group_photo", "ritual"]
+    
+    result = AiAnalysisResult(
+        num_of_people=random.randint(1, 10),
+        event=[random.choice(possible_events)],
+        type=[random.choice(possible_types)],
+        faces={
+            "num_smiling": random.randint(0, 5),
+            "all_smiling": random.choice([True, False]),
+            "any_eyes_closed": random.choice([True, False]),
+            "all_looking_at_camera": random.choice([True, False])
+        },
+        quality={
+            "blurry": random.choice([True, False]),
+            "sharp_subject": True
+        },
+        framing={
+            "centered_subject": True
+        },
+        attire={
+            "traditional_wear": True
+        },
+        color_theme=["yellow", "red"],
+        decor_cues=["flowers", "lights"]
+    )
+
+    # Legacy mappings for frontend compatibility
+    tags = list(set(result.event + result.type + result.decor_cues))
+    is_ai_pick = result.quality.sharp_subject and not result.quality.blurry
+    
+    return {
+        **result.model_dump(),
+        "tags": tags,
+        "isAiPick": is_ai_pick,
+        "isAiProcessed": True,
+        # Keep category mapping for older frontend logic if needed
+        "category": result.event[0] if result.event else "other"
+    }
+
+def clean_json_response(response_text: str) -> str:
+    """Cleans markdown code blocks from the LLM response."""
+    # Remove ```json and ```
+    cleaned = re.sub(r"```json\s*", "", response_text)
+    cleaned = re.sub(r"```", "", cleaned)
+    return cleaned.strip()
+
+async def qwen_process_photo(photo, event_subevents):
+    """Uses Qwen-VL to analyze the photo."""
+    try:
+        # Construct Query
+        query = tokenizer.from_list_format([
+            {'image': photo['url']},
+            {'text': PROMPTS.get("analysis_prompt", "Describe this image in JSON.")}
+        ])
+        
+        inputs = tokenizer(query, return_tensors='pt').to(model.device)
+        
+        # Generate
+        pred = model.generate(**inputs, max_new_tokens=1024) # Increased token limit for JSON
+        response_text = tokenizer.decode(pred.cpu()[0], skip_special_tokens=True)
+        
+        # Parse JSON
+        cleaned_json = clean_json_response(response_text)
+        data = json.loads(cleaned_json)
+        
+        # Validate with Pydantic
+        analysis_result = AiAnalysisResult(**data)
+        
+        # --- Post-Processing / Enirchment ---
+        
+        # 1. Map new structured data to legacy fields
+        legacy_tags = []
+        if analysis_result.event:
+            legacy_tags.extend(analysis_result.event)
+        if analysis_result.type:
+            legacy_tags.extend(analysis_result.type)
+        if analysis_result.emotions:
+            legacy_tags.extend(analysis_result.emotions)
+        if analysis_result.decor_cues:
+            legacy_tags.extend(analysis_result.decor_cues)
+            
+        # 2. Determine AI Pick based on Quality Analysis
+        q = analysis_result.quality
+        is_ai_pick = False
+        if q and q.sharp_subject and not (q.blurry or q.out_of_focus or q.under_exposed):
+             # Bonus: Smile detection
+             if analysis_result.faces and analysis_result.faces.num_smiling > 0:
+                 is_ai_pick = True
+
+        # 3. Determine Category (Primary Event)
+        category = "General"
+        if analysis_result.event and len(analysis_result.event) > 0:
+            category = analysis_result.event[0].capitalize()
+
+        # 4. Mock Face Identity Matching (Since Qwen is generic VLM)
+        # In a real scenario, you'd crop faces and use Facenet/ArcFace here.
+        # We will keep the People list empty or mock it based on context like before.
+        people = [] 
+        attire = analysis_result.attire
+        if attire:
+            if attire.bride_present: people.append("Priya") # Mock mapping
+            if attire.groom_present: people.append("Rohan")
+
+        return {
+            "aiAnalysis": analysis_result.model_dump(),
+            "tags": list(set(legacy_tags))[:10], # Limit tags
+            "people": people,
+            "isAiPick": is_ai_pick,
+            "category": category,
+            "isAiProcessed": True
+        }
+
+    except Exception as e:
+        logger.error(f"Qwen inference failed for {photo['id']}: {e}")
+        # Optionally fall back to mock if inference fails, or just return basic error info
+        return await mock_process_photo(photo, event_subevents)
+
+
+async def run_ai_processing(event_id: str):
+    logger.info(f"Starting processing for Event: {event_id}")
+    
+    # 1. Fetch Event Context
+    event = await db.events.find_one({"_id": ObjectId(event_id)})
+    if not event:
+        logger.error(f"Event {event_id} not found")
+        return
+
+    # 2. Fetch Unprocessed Photos
+    cursor = db.photos.find({"eventId": event_id, "isAiProcessed": False})
+    photos_to_process = await cursor.to_list(None)
+    
+    logger.info(f"Found {len(photos_to_process)} photos to process.")
+    
+    if not photos_to_process:
+        return
+
+    # 3. Processing Loop
+    for photo in photos_to_process:
+        result = None
+        
+        if model:
+            # Try Real AI
+            result = await qwen_process_photo(photo, event.get("subEvents", []))
+        else:
+            # Use Mock
+            result = await mock_process_photo(photo, event.get("subEvents", []))
+            
+        # Update DB
+        if result:
+            await db.photos.update_one(
+                {"_id": photo["_id"]},
+                {"$set": result}
+            )
+    
+    logger.info(f"Finished processing {event_id}")
+
+# --- Routes ---
+
+@app.get("/health")
+def health_check():
+    return {
+        "status": "ok", 
+        "mode": "Qwen-VL" if model else "Mock", 
+        "gpu_available": torch.cuda.is_available() if torch else False
+    }
+
+@app.post("/process-event/{event_id}", response_model=AiProcessResponse)
+async def process_event(event_id: str, background_tasks: BackgroundTasks, payload: Optional[ProcessEventRequest] = None):
+    # Check if there are tasks
+    count = await db.photos.count_documents({"eventId": event_id, "isAiProcessed": False})
+    
+    # Add to background queue
+    background_tasks.add_task(run_ai_processing, event_id)
+    
+    return AiProcessResponse(
+        message=f"AI Processing triggered in background ({'Qwen' if model else 'Mock'} Mode)",
+        event_id=event_id,
+        tasks_queued=count
+    )
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8001)

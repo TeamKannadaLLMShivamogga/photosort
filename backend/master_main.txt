@@ -1,0 +1,334 @@
+import os
+from datetime import datetime
+from typing import List, Optional, Literal, Set
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI, HTTPException, Body, BackgroundTasks
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, Field, BeforeValidator, ConfigDict
+from motor.motor_asyncio import AsyncIOMotorClient
+from bson import ObjectId
+from typing_extensions import Annotated
+import httpx
+from dotenv import load_dotenv
+
+load_dotenv()
+
+# --- Database Setup ---
+MONGO_URL = os.getenv("MONGODB_URL", "mongodb://localhost:27017")
+DB_NAME = "photosort"
+AI_SERVICE_URL = os.getenv("AI_SERVICE_URL", "http://localhost:8001")
+
+client = AsyncIOMotorClient(MONGO_URL)
+db = client[DB_NAME]
+
+# --- Pydantic ObjectId Helper ---
+PyObjectId = Annotated[str, BeforeValidator(str)]
+
+class MongoBaseModel(BaseModel):
+    id: Optional[PyObjectId] = Field(alias="_id", default=None)
+    model_config = ConfigDict(
+        populate_by_name=True,
+        arbitrary_types_allowed=True,
+        json_encoders={ObjectId: str}
+    )
+
+# --- Models (Matching Frontend Types) ---
+
+UserRole = Literal['ADMIN', 'PHOTOGRAPHER', 'USER']
+SubscriptionTier = Literal['FREE', 'PRO', 'STUDIO']
+EventStatus = Literal['active', 'completed', 'closed']
+PhotoQuality = Literal['high', 'medium', 'low']
+EventPlan = Literal['BASIC', 'STANDARD', 'PRO']
+PaymentStatus = Literal['pending', 'partial', 'paid']
+OptimizationType = Literal['none', 'balanced', 'performance', 'high-quality']
+
+class FamilyMember(BaseModel):
+    id: str
+    name: str
+    relation: str
+    referencePhoto: Optional[str] = None
+
+class SubEvent(BaseModel):
+    id: str
+    name: str
+    date: datetime
+
+class User(MongoBaseModel):
+    email: str
+    name: str
+    role: UserRole = 'USER'
+    avatar: Optional[str] = None
+    familyMembers: List[FamilyMember] = []
+    subscriptionTier: SubscriptionTier = 'FREE'
+    subscriptionExpiry: Optional[datetime] = None
+    isActive: bool = True
+    joinDate: Optional[datetime] = Field(default_factory=datetime.now)
+    totalEventsCount: int = 0
+    totalPhotosCount: int = 0
+    totalUsersCount: int = 0
+
+class Event(MongoBaseModel):
+    name: str
+    date: datetime
+    photographerId: str
+    coverImage: str
+    photoCount: int = 0
+    assignedUsers: List[str] = []
+    subEvents: List[SubEvent] = []
+    status: EventStatus = 'active'
+    price: Optional[float] = 0.0
+    paidAmount: Optional[float] = 0.0
+    paymentStatus: PaymentStatus = 'pending'
+    plan: EventPlan = 'BASIC'
+    clientEmail: Optional[str] = None
+    clientPhone: Optional[str] = None
+    serviceFee: Optional[float] = 0.0
+    deadline: Optional[datetime] = None
+    optimizationSetting: OptimizationType = 'balanced'
+
+class Photo(MongoBaseModel):
+    url: str
+    eventId: str
+    tags: List[str] = []
+    people: List[str] = []
+    isAiPick: bool = False
+    quality: PhotoQuality = 'medium'
+    category: Optional[str] = None
+    subEventId: Optional[str] = None
+    isSelected: bool = False
+    isAiProcessed: bool = False
+    originalSize: Optional[int] = 0
+    optimizedSize: Optional[int] = 0
+
+class LoginRequest(BaseModel):
+    email: str
+
+class PhotoUploadRequest(BaseModel):
+    photos: List[Photo]
+
+# --- Startup/Seeding ---
+
+async def seed_data():
+    if await db.users.count_documents({}) > 0:
+        return
+    
+    print("Seeding Database...")
+    
+    # Create Admin
+    admin = User(
+        email="admin@photosort.com",
+        name="Admin User",
+        role="ADMIN",
+        avatar="https://ui-avatars.com/api/?name=Admin&background=000&color=fff"
+    )
+    res_admin = await db.users.insert_one(admin.model_dump(by_alias=True, exclude=["id"]))
+    
+    # Create Photographer
+    photographer = User(
+        email="photographer@photosort.com",
+        name="John Doe Studio",
+        role="PHOTOGRAPHER",
+        avatar="https://ui-avatars.com/api/?name=John+Doe&background=10B981&color=fff",
+        subscriptionTier="PRO",
+        subscriptionExpiry=datetime(2025, 12, 31),
+        totalEventsCount=1,
+        totalPhotosCount=12,
+        totalUsersCount=1
+    )
+    res_photog = await db.users.insert_one(photographer.model_dump(by_alias=True, exclude=["id"]))
+    photog_id = str(res_photog.inserted_id)
+
+    # Create User
+    client_user = User(
+        email="user@photosort.com",
+        name="Rohan & Priya",
+        role="USER",
+        avatar="https://ui-avatars.com/api/?name=Rohan+Priya&background=random"
+    )
+    res_client = await db.users.insert_one(client_user.model_dump(by_alias=True, exclude=["id"]))
+    client_id = str(res_client.inserted_id)
+
+    # Create Event
+    event_date = datetime.now()
+    event = Event(
+        name="Rohan Weds Priya - The Royal Wedding",
+        date=event_date,
+        photographerId=photog_id,
+        coverImage="https://images.unsplash.com/photo-1519741497674-611481863552?q=80&w=2070&auto=format&fit=crop",
+        photoCount=0,
+        assignedUsers=[client_id],
+        status='active',
+        price=150000,
+        paidAmount=75000,
+        paymentStatus='partial',
+        plan='PRO',
+        subEvents=[
+            SubEvent(id="se-1", name="Haldi", date=event_date),
+            SubEvent(id="se-2", name="Wedding", date=event_date),
+            SubEvent(id="se-3", name="Reception", date=event_date)
+        ]
+    )
+    await db.events.insert_one(event.model_dump(by_alias=True, exclude=["id"]))
+    print("Seeding Complete.")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await seed_data()
+    yield
+
+app = FastAPI(lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# --- Helpers ---
+
+async def trigger_ai_service(event_id: str):
+    async with httpx.AsyncClient() as client:
+        try:
+            await client.post(f"{AI_SERVICE_URL}/process-event/{event_id}")
+        except Exception as e:
+            print(f"Failed to trigger AI service: {e}")
+
+# --- API Routes ---
+
+@app.get("/")
+def read_root():
+    return {"status": "Master Backend Running"}
+
+# Auth
+@app.post("/api/auth/login", response_model=User)
+async def login(req: LoginRequest):
+    user = await db.users.find_one({"email": req.email})
+    if not user:
+        new_user = User(
+            email=req.email,
+            name=req.email.split('@')[0],
+            role="USER",
+            avatar=f"https://ui-avatars.com/api/?name={req.email}&background=random"
+        )
+        res = await db.users.insert_one(new_user.model_dump(by_alias=True, exclude=["id"]))
+        created_user = await db.users.find_one({"_id": res.inserted_id})
+        return created_user
+    return user
+
+# Users
+@app.get("/api/users", response_model=List[User])
+async def get_users():
+    users = await db.users.find().to_list(1000)
+    return users
+
+@app.post("/api/users", response_model=User)
+async def create_user(user: User):
+    new_user = await db.users.insert_one(user.model_dump(by_alias=True, exclude=["id"]))
+    created_user = await db.users.find_one({"_id": new_user.inserted_id})
+    return created_user
+
+@app.put("/api/users/{id}", response_model=User)
+async def update_user(id: str, user: User):
+    await db.users.update_one({"_id": ObjectId(id)}, {"$set": user.model_dump(exclude=["id"])})
+    updated_user = await db.users.find_one({"_id": ObjectId(id)})
+    return updated_user
+
+@app.delete("/api/users/{id}")
+async def delete_user(id: str):
+    await db.users.delete_one({"_id": ObjectId(id)})
+    return {"message": "User deleted"}
+
+@app.patch("/api/users/{id}/status", response_model=User)
+async def toggle_user_status(id: str):
+    user = await db.users.find_one({"_id": ObjectId(id)})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    new_status = not user.get("isActive", True)
+    await db.users.update_one({"_id": ObjectId(id)}, {"$set": {"isActive": new_status}})
+    updated_user = await db.users.find_one({"_id": ObjectId(id)})
+    return updated_user
+
+# Events
+@app.get("/api/events", response_model=List[Event])
+async def get_events():
+    events = await db.events.find().to_list(1000)
+    return events
+
+@app.post("/api/events", response_model=Event)
+async def create_event(event: Event):
+    event_dict = event.model_dump(by_alias=True, exclude=["id"])
+    if not event_dict.get("subEvents"):
+         event_dict["subEvents"] = [
+             SubEvent(id=f"se-{datetime.now().timestamp()}", name="Main Event", date=event.date).model_dump()
+         ]
+    
+    new_event = await db.events.insert_one(event_dict)
+    created_event = await db.events.find_one({"_id": new_event.inserted_id})
+    return created_event
+
+@app.put("/api/events/{id}", response_model=Event)
+async def update_event(id: str, event: Event):
+    await db.events.update_one({"_id": ObjectId(id)}, {"$set": event.model_dump(exclude=["id"])})
+    updated_event = await db.events.find_one({"_id": ObjectId(id)})
+    return updated_event
+
+@app.delete("/api/events/{id}")
+async def delete_event(id: str):
+    await db.events.delete_one({"_id": ObjectId(id)})
+    await db.photos.delete_many({"eventId": id})
+    return {"message": "Event deleted"}
+
+# Photos
+@app.get("/api/events/{id}/photos", response_model=List[Photo])
+async def get_event_photos(id: str):
+    photos = await db.photos.find({"eventId": id}).to_list(2000)
+    return photos
+
+@app.post("/api/events/{id}/photos", response_model=List[Photo])
+async def upload_photos(id: str, payload: PhotoUploadRequest, background_tasks: BackgroundTasks):
+    photos_data = []
+    for p in payload.photos:
+        p_dict = p.model_dump(by_alias=True, exclude=["id"])
+        p_dict["eventId"] = id
+        p_dict["isAiProcessed"] = False # Reset for AI service
+        photos_data.append(p_dict)
+    
+    if not photos_data:
+        return []
+
+    result = await db.photos.insert_many(photos_data)
+    
+    # Update event count
+    count = await db.photos.count_documents({"eventId": id})
+    await db.events.update_one({"_id": ObjectId(id)}, {"$set": {"photoCount": count}})
+
+    # Trigger AI Service
+    background_tasks.add_task(trigger_ai_service, id)
+
+    # Fetch created photos
+    created_photos = await db.photos.find({"_id": {"$in": result.inserted_ids}}).to_list(None)
+    return created_photos
+
+@app.post("/api/photos/{id}/selection", response_model=Photo)
+async def toggle_selection(id: str):
+    photo = await db.photos.find_one({"_id": ObjectId(id)})
+    if not photo:
+        raise HTTPException(status_code=404, detail="Photo not found")
+    
+    new_val = not photo.get("isSelected", False)
+    await db.photos.update_one({"_id": ObjectId(id)}, {"$set": {"isSelected": new_val}})
+    
+    updated_photo = await db.photos.find_one({"_id": ObjectId(id)})
+    return updated_photo
+
+@app.post("/api/events/{id}/submit-selections")
+async def submit_selections(id: str):
+    # Workflow logic stub
+    return {"message": "Selections submitted successfully"}
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)

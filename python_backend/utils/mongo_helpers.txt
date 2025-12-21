@@ -1,0 +1,24 @@
+"""
+MongoDB Helpers
+Contains Pydantic configurations for handling BSON ObjectIds.
+"""
+
+from typing import Optional, Annotated, Any
+from pydantic import BaseModel, Field, BeforeValidator, ConfigDict
+from bson import ObjectId
+
+# --- Pydantic ObjectId Helper ---
+# Allows using str for ObjectId fields in Pydantic models
+PyObjectId = Annotated[str, BeforeValidator(str)]
+
+class MongoBaseModel(BaseModel):
+    """
+    Base model to handle MongoDB _id -> id mapping automatically.
+    Ensures that the internal '_id' from MongoDB is exposed as 'id' in the API JSON.
+    """
+    id: Optional[PyObjectId] = Field(alias="_id", default=None)
+    model_config = ConfigDict(
+        populate_by_name=True,
+        arbitrary_types_allowed=True,
+        json_encoders={ObjectId: str}
+    )

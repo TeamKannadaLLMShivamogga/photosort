@@ -1,0 +1,114 @@
+import os
+import asyncio
+import random
+from typing import Optional
+
+from fastapi import FastAPI, BackgroundTasks
+from pydantic import BaseModel
+from motor.motor_asyncio import AsyncIOMotorClient
+from bson import ObjectId
+from dotenv import load_dotenv
+
+load_dotenv()
+
+MONGO_URL = os.getenv("MONGODB_URL", "mongodb://localhost:27017")
+DB_NAME = "photosort"
+
+client = AsyncIOMotorClient(MONGO_URL)
+db = client[DB_NAME]
+
+app = FastAPI()
+
+class ProcessEventRequest(BaseModel):
+    force_reprocess: bool = False
+
+class AiProcessResponse(BaseModel):
+    message: str
+    event_id: str
+    tasks_queued: int
+
+# --- Mock AI Logic ---
+
+async def run_ai_processing(event_id: str):
+    print(f"AI Service: Starting processing for {event_id}")
+    
+    # 1. Fetch Event Context
+    event = await db.events.find_one({"_id": ObjectId(event_id)})
+    if not event:
+        print(f"AI Service: Event {event_id} not found")
+        return
+
+    # 2. Fetch Unprocessed Photos
+    cursor = db.photos.find({"eventId": event_id, "isAiProcessed": False})
+    photos_to_process = await cursor.to_list(None)
+    
+    print(f"AI Service: Found {len(photos_to_process)} photos to process.")
+    
+    if not photos_to_process:
+        return
+
+    # 3. Simulate Processing Loop
+    for photo in photos_to_process:
+        # Simulate CPU/GPU latency
+        await asyncio.sleep(0.1) 
+        
+        # Mock Logic:
+        # Assign random tags
+        possible_tags = ["Wedding", "Ceremony", "Candid", "Decor", "Dance", "Food", "Outdoors"]
+        tags = random.sample(possible_tags, k=random.randint(1, 3))
+        
+        # Assign random people (mocking face clustering)
+        # In real app, we would fetch User.familyMembers referencing embeddings
+        people = []
+        if random.random() > 0.5:
+            people.append("Rohan")
+        if random.random() > 0.6:
+            people.append("Priya")
+        
+        # Assign Quality Score (AI Pick)
+        is_ai_pick = random.random() > 0.7 # 30% chance of being a highlight
+        
+        # Assign Category based on sub-events (mock)
+        category = "General"
+        if event.get("subEvents"):
+            category = random.choice(event["subEvents"])["name"]
+
+        # Update DB
+        await db.photos.update_one(
+            {"_id": photo["_id"]},
+            {
+                "$set": {
+                    "tags": tags,
+                    "people": people,
+                    "isAiPick": is_ai_pick,
+                    "category": category,
+                    "isAiProcessed": True
+                }
+            }
+        )
+    
+    print(f"AI Service: Finished processing {event_id}")
+
+# --- Routes ---
+
+@app.get("/health")
+def health_check():
+    return {"status": "ok", "gpu_available": False}
+
+@app.post("/process-event/{event_id}", response_model=AiProcessResponse)
+async def process_event(event_id: str, background_tasks: BackgroundTasks, payload: Optional[ProcessEventRequest] = None):
+    # Check if there are tasks
+    count = await db.photos.count_documents({"eventId": event_id, "isAiProcessed": False})
+    
+    # Add to background queue
+    background_tasks.add_task(run_ai_processing, event_id)
+    
+    return AiProcessResponse(
+        message="AI Processing triggered in background",
+        event_id=event_id,
+        tasks_queued=count
+    )
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8001)

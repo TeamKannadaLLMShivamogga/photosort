@@ -87,7 +87,8 @@ const PhotoSchema = new Schema({
   subEventId: String,
   isSelected: { type: Boolean, default: false },
   originalSize: Number,
-  optimizedSize: Number
+  optimizedSize: Number,
+  isAiProcessed: { type: Boolean, default: false }
 });
 
 PhotoSchema.set('toJSON', {

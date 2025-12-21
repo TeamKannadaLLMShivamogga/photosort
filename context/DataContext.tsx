@@ -335,7 +335,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const deleteUser = (id: string) => {
+  const deleteUser = async (id: string) => {
+    try {
+        await fetch(`${API_URL}/users/${id}`, { method: 'DELETE' });
+    } catch (e) { console.warn("Backend unavailable. Deleting user locally."); }
     setUsers(prev => prev.filter(u => u.id !== id));
   };
 
