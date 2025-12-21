@@ -2,7 +2,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { 
   Grid2X2, Sparkles, User, Calendar, Tag, Check, Filter, 
-  X, ChevronRight, Star, CheckCircle2, Image as ImageIcon, RotateCcw, Trash2, Edit2
+  X, ChevronRight, Star, CheckCircle2, Image as ImageIcon, RotateCcw, Trash2, Edit2, UploadCloud
 } from 'lucide-react';
 import { useData } from '../../context/DataContext';
 import { Photo } from '../../types';
@@ -12,9 +12,10 @@ type TabType = 'all' | 'ai' | 'people' | 'ceremony' | 'activity';
 interface GalleryViewProps {
   initialTab?: string;
   isPhotographer?: boolean;
+  onUploadClick?: () => void;
 }
 
-const GalleryView: React.FC<GalleryViewProps> = ({ initialTab, isPhotographer }) => {
+const GalleryView: React.FC<GalleryViewProps> = ({ initialTab, isPhotographer, onUploadClick }) => {
   const { photos, activeEvent, selectedPhotos, togglePhotoSelection, submitSelections, deletePhoto, renamePersonInEvent } = useData();
   const [activeTab, setActiveTab] = useState<TabType>('all');
   const [selectedFilters, setSelectedFilters] = useState<{
@@ -114,83 +115,91 @@ const GalleryView: React.FC<GalleryViewProps> = ({ initialTab, isPhotographer })
 
   return (
     <div className="flex flex-col h-full bg-slate-50 animate-in fade-in duration-300">
-      <div className="bg-white border-b border-slate-100 px-4 py-1.5 flex flex-col gap-1.5 sticky top-0 z-20 shadow-sm">
+      <div className="bg-white border-b border-slate-100 px-4 py-3 flex flex-col gap-3 sticky top-0 z-20 shadow-sm">
         <div className="flex items-center justify-between">
-          <h2 className="text-sm font-bold text-slate-800 flex items-center gap-2">
-            Gallery
-            <span className="text-[10px] font-normal text-slate-400 bg-slate-50 px-2 py-0.5 rounded-full border border-slate-100">
-              {filteredPhotos.length}
-            </span>
-          </h2>
-        </div>
-
-        <div className="flex items-center gap-1 overflow-x-auto no-scrollbar pb-0.5 -mx-4 px-4">
-          {tabs.map(tab => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-1.5 px-4 py-2 rounded-full text-[10px] font-bold whitespace-nowrap transition-all ${
-                activeTab === tab.id 
-                  ? 'bg-indigo-600 text-white shadow-sm' 
-                  : 'bg-slate-50 text-slate-500 hover:bg-slate-100'
-              }`}
-            >
-              <tab.icon className="w-3 h-3" />
-              {tab.label}
-            </button>
-          ))}
-        </div>
-
-        {activeTab !== 'all' && activeTab !== 'ai' && (
-          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-1 border-t border-slate-50 mt-0.5 -mx-4 px-4">
-            {filterOptions[activeTab as keyof typeof filterOptions].slice(0, 8).map(val => (
-              <div key={val} className="relative group/chip">
-                  <button
-                    onClick={() => toggleFilter(activeTab as keyof typeof selectedFilters, val)}
-                    className={`flex items-center gap-1.5 pl-1 pr-2.5 py-1 rounded-full text-[10px] transition-all border whitespace-nowrap shrink-0 ${
-                      selectedFilters[activeTab as keyof typeof selectedFilters].includes(val)
-                        ? 'bg-indigo-50 border-indigo-200 text-indigo-700 font-bold'
-                        : 'bg-white border-slate-100 text-slate-600 shadow-sm'
-                    }`}
-                  >
-                    {activeTab === 'people' ? (
-                      <img 
-                        src={peopleThumbnails[val]} 
-                        className="w-5 h-5 rounded-full object-cover border border-white"
-                        alt=""
-                      />
-                    ) : (
-                      <div className="w-5 h-5 rounded-full bg-slate-50 flex items-center justify-center text-[7px] font-bold text-slate-400 border border-slate-100">
-                        {val.charAt(0)}
-                      </div>
-                    )}
-                    <span>{val}</span>
-                    {activeTab === 'ceremony' && (
-                        <span className={`text-[9px] font-bold ${selectedFilters.ceremony.includes(val) ? 'text-indigo-400' : 'text-slate-400'}`}>
-                            ({subEventCounts[val] || 0})
-                        </span>
-                    )}
-                    {selectedFilters[activeTab as keyof typeof selectedFilters].includes(val) && <X className="w-2.5 h-2.5" />}
-                  </button>
-                  {/* Face Edit Button (User Story 30) */}
-                  {!isPhotographer && activeTab === 'people' && (
-                      <button 
-                        onClick={(e) => { e.stopPropagation(); setEditPersonName({ old: val, new: val }); }}
-                        className="absolute -top-1 -right-1 bg-white text-slate-500 hover:text-indigo-600 p-1 rounded-full shadow-md border border-slate-100 opacity-0 group-hover/chip:opacity-100 transition-opacity"
-                      >
-                          <Edit2 className="w-2 h-2" />
-                      </button>
-                  )}
-              </div>
+          <div className="flex items-center gap-1 overflow-x-auto no-scrollbar">
+            {tabs.map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-[10px] font-bold whitespace-nowrap transition-all ${
+                  activeTab === tab.id 
+                    ? 'bg-slate-900 text-white shadow-md' 
+                    : 'bg-slate-50 text-slate-500 hover:bg-slate-100 border border-slate-100'
+                }`}
+              >
+                <tab.icon className="w-3 h-3" />
+                {tab.label}
+              </button>
             ))}
-            <button 
-              onClick={() => setIsModalOpen(true)}
-              className="flex items-center gap-1 px-3 py-1 rounded-full text-[10px] text-indigo-600 font-bold hover:bg-indigo-50 transition-colors whitespace-nowrap"
-            >
-              View All <ChevronRight className="w-2.5 h-2.5" />
-            </button>
           </div>
-        )}
+          
+          {isPhotographer && onUploadClick && (
+              <button 
+                  onClick={onUploadClick}
+                  className="flex items-center gap-2 px-4 py-2 bg-[#10B981] hover:bg-[#059669] text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-md active:scale-95 transition-all ml-2 whitespace-nowrap"
+              >
+                  <UploadCloud className="w-4 h-4" /> <span className="hidden sm:inline">Upload Raw</span>
+              </button>
+          )}
+        </div>
+
+        <div className="flex items-center justify-between">
+            {activeTab !== 'all' && activeTab !== 'ai' && (
+            <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-1">
+                {filterOptions[activeTab as keyof typeof filterOptions].slice(0, 8).map(val => (
+                <div key={val} className="relative group/chip">
+                    <button
+                        onClick={() => toggleFilter(activeTab as keyof typeof selectedFilters, val)}
+                        className={`flex items-center gap-1.5 pl-1 pr-2.5 py-1 rounded-full text-[10px] transition-all border whitespace-nowrap shrink-0 ${
+                        selectedFilters[activeTab as keyof typeof selectedFilters].includes(val)
+                            ? 'bg-indigo-50 border-indigo-200 text-indigo-700 font-bold'
+                            : 'bg-white border-slate-100 text-slate-600 shadow-sm'
+                        }`}
+                    >
+                        {activeTab === 'people' ? (
+                        <img 
+                            src={peopleThumbnails[val]} 
+                            className="w-5 h-5 rounded-full object-cover border border-white"
+                            alt=""
+                        />
+                        ) : (
+                        <div className="w-5 h-5 rounded-full bg-slate-50 flex items-center justify-center text-[7px] font-bold text-slate-400 border border-slate-100">
+                            {val.charAt(0)}
+                        </div>
+                        )}
+                        <span>{val}</span>
+                        {activeTab === 'ceremony' && (
+                            <span className={`text-[9px] font-bold ${selectedFilters.ceremony.includes(val) ? 'text-indigo-400' : 'text-slate-400'}`}>
+                                ({subEventCounts[val] || 0})
+                            </span>
+                        )}
+                        {selectedFilters[activeTab as keyof typeof selectedFilters].includes(val) && <X className="w-2.5 h-2.5" />}
+                    </button>
+                    {/* Face Edit Button (User Story 30) */}
+                    {!isPhotographer && activeTab === 'people' && (
+                        <button 
+                            onClick={(e) => { e.stopPropagation(); setEditPersonName({ old: val, new: val }); }}
+                            className="absolute -top-1 -right-1 bg-white text-slate-500 hover:text-indigo-600 p-1 rounded-full shadow-md border border-slate-100 opacity-0 group-hover/chip:opacity-100 transition-opacity"
+                        >
+                            <Edit2 className="w-2 h-2" />
+                        </button>
+                    )}
+                </div>
+                ))}
+                <button 
+                onClick={() => setIsModalOpen(true)}
+                className="flex items-center gap-1 px-3 py-1 rounded-full text-[10px] text-indigo-600 font-bold hover:bg-indigo-50 transition-colors whitespace-nowrap"
+                >
+                View All <ChevronRight className="w-2.5 h-2.5" />
+                </button>
+            </div>
+            )}
+            
+            <div className="ml-auto text-[10px] font-bold text-slate-400 bg-slate-50 px-3 py-1 rounded-full border border-slate-100">
+                {filteredPhotos.length} Photos
+            </div>
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto p-2 no-scrollbar">

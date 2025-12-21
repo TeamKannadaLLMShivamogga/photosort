@@ -118,6 +118,8 @@ export interface Event {
   id: string;
   name: string;
   date: string;
+  endDate?: string;
+  location?: string;
   photographerId: string;
   coverImage: string;
   photoCount: number;

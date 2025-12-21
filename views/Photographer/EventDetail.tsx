@@ -4,7 +4,7 @@ import {
   Settings, Upload, Image as ImageIcon, CheckSquare, 
   Share2, X, Clock, Download, FileJson, Calendar, ChevronLeft, Loader2,
   Edit2, Zap, ShieldCheck, FileType, Sparkles, Wand2, CreditCard, ChevronDown, FolderOpen,
-  Database, Activity, Plus, Users, Trash2, GitPullRequest, Lock, Unlock, Send, MessageCircle, AlertCircle, CheckCircle, UploadCloud, ChevronRight, AlertTriangle, Gift, Check, XCircle
+  Database, Activity, Plus, Users, Trash2, GitPullRequest, Lock, Unlock, Send, MessageCircle, AlertCircle, CheckCircle, UploadCloud, ChevronRight, AlertTriangle, Gift, Check, XCircle, MapPin
 } from 'lucide-react';
 import { useData } from '../../context/DataContext';
 import GalleryView from '../../components/Gallery/GalleryView';
@@ -257,26 +257,46 @@ const PhotographerEventDetail: React.FC<{ onNavigate: (view: string) => void, in
   return (
     <div className="flex flex-col h-full bg-slate-50 -m-8 animate-in fade-in duration-500 relative">
       {/* Header */}
-      <div className="bg-white px-8 py-3 border-b border-slate-100 space-y-3 shadow-sm z-20 relative">
-        <div className="flex items-center gap-4">
-          <button 
-            onClick={() => { setActiveEvent(null); onNavigate('events'); }}
-            className="p-1.5 hover:bg-slate-50 rounded-lg text-slate-400"
-          >
-            <ChevronLeft className="w-5 h-5" />
-          </button>
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg overflow-hidden shadow-sm border border-slate-100">
-              <img src={activeEvent.coverImage} className="w-full h-full object-cover" alt="" />
-            </div>
-            <div>
-              <h1 className="text-lg font-bold text-slate-900 leading-none">{activeEvent.name}</h1>
-              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mt-1">{activeEvent.photoCount} photos</p>
+      <div className="bg-white px-8 py-4 border-b border-slate-100 space-y-4 shadow-sm z-20 relative">
+        <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
+          <div className="flex items-start gap-4">
+            <button 
+                onClick={() => { setActiveEvent(null); onNavigate('events'); }}
+                className="mt-1 p-2 hover:bg-slate-50 rounded-lg text-slate-400 transition-colors"
+            >
+                <ChevronLeft className="w-5 h-5" />
+            </button>
+            <div className="flex gap-4">
+                <div className="w-16 h-16 rounded-2xl overflow-hidden shadow-md border-2 border-slate-50 shrink-0">
+                    <img src={activeEvent.coverImage} className="w-full h-full object-cover" alt="" />
+                </div>
+                <div>
+                    <h1 className="text-xl font-black text-slate-900 leading-tight tracking-tight">{activeEvent.name}</h1>
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mt-2">
+                        <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-500 uppercase tracking-widest">
+                            <Calendar className="w-3.5 h-3.5 text-indigo-500" />
+                            <span>
+                                {new Date(activeEvent.date).toLocaleDateString()}
+                                {activeEvent.endDate ? ` - ${new Date(activeEvent.endDate).toLocaleDateString()}` : ''}
+                            </span>
+                        </div>
+                        {activeEvent.location && (
+                            <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-500 uppercase tracking-widest">
+                                <MapPin className="w-3.5 h-3.5 text-rose-500" />
+                                <span>{activeEvent.location}</span>
+                            </div>
+                        )}
+                        <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-500 uppercase tracking-widest">
+                            <ImageIcon className="w-3.5 h-3.5 text-emerald-500" />
+                            <span>{photos.length} Photos</span>
+                        </div>
+                    </div>
+                </div>
             </div>
           </div>
           
           {/* Status Card */}
-          <div className={`hidden md:flex items-center gap-4 px-5 py-2.5 rounded-2xl border transition-all ${getStatusColor(activeEvent.selectionStatus)} shadow-sm ml-auto mr-4`}>
+          <div className={`hidden md:flex items-center gap-4 px-5 py-2.5 rounded-2xl border transition-all ${getStatusColor(activeEvent.selectionStatus)} shadow-sm`}>
              <div className="flex flex-col">
                  <div className="flex items-center gap-2">
                     <div className="relative">
@@ -524,17 +544,8 @@ const PhotographerEventDetail: React.FC<{ onNavigate: (view: string) => void, in
         {/* GALLERY TAB (Raw Images) */}
         {activeTab === 'sorted' && (
             <div className="max-w-7xl mx-auto h-full flex flex-col relative">
-                <div className="flex justify-end mb-4 px-4">
-                    <button 
-                        onClick={() => setIsRawUploadModalOpen(true)} 
-                        disabled={isUploading}
-                        className={`flex items-center gap-2 px-4 py-2 bg-[#10B981] text-white rounded-xl shadow-lg transition-all text-[10px] font-black uppercase tracking-widest active:scale-95 ${isUploading ? 'opacity-50 cursor-not-allowed grayscale' : 'hover:bg-[#059669]'}`}
-                    >
-                        {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <UploadCloud className="w-4 h-4" />} 
-                        {isUploading ? 'Uploading...' : 'Upload Raw Images'}
-                    </button>
-                </div>
-                <GalleryView isPhotographer={true} />
+                {/* REMOVED: Floating upload button */}
+                <GalleryView isPhotographer={true} onUploadClick={() => setIsRawUploadModalOpen(true)} />
             </div>
         )}
         

@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { useData } from '../../context/DataContext';
 import { 
   Plus, Calendar, Search, ArrowRight, MoreVertical, X, 
-  Image as ImageIcon, Filter, LayoutGrid, List, ChevronRight, Mail, Phone, Check, CreditCard, Ticket, Sparkles, ShieldCheck, Eye, Trash2, User, AlertCircle
+  Image as ImageIcon, Filter, LayoutGrid, List, ChevronRight, Mail, Phone, Check, CreditCard, Ticket, Sparkles, ShieldCheck, Eye, Trash2, User, AlertCircle, MapPin
 } from 'lucide-react';
 import { EventPlan, Service } from '../../types';
 
@@ -25,6 +25,7 @@ const PhotographerEventsList: React.FC<EventsListProps> = ({ onNavigate }) => {
     name: '', 
     startDate: '', 
     endDate: '', 
+    location: '',
     price: 0,
     coverImage: 'https://picsum.photos/seed/wedding1/800/400',
     plan: EventPlan.BASIC,
@@ -93,7 +94,9 @@ const PhotographerEventsList: React.FC<EventsListProps> = ({ onNavigate }) => {
   const handleFinalSubmit = () => {
     addEvent({ 
       ...newEvent, 
-      date: newEvent.startDate, 
+      date: newEvent.startDate,
+      endDate: newEvent.endDate,
+      location: newEvent.location,
       photographerId: currentUser?.id,
       paymentStatus: 'paid',
       initialClients: clientList,
@@ -109,7 +112,7 @@ const PhotographerEventsList: React.FC<EventsListProps> = ({ onNavigate }) => {
     setDiscountApplied(false);
     setCouponCode('');
     setNewEvent({ 
-      name: '', startDate: '', endDate: '', price: 0, 
+      name: '', startDate: '', endDate: '', location: '', price: 0, 
       coverImage: 'https://picsum.photos/seed/wedding1/800/400', plan: EventPlan.BASIC, serviceFee: 499,
       selectedServices: []
     });
@@ -196,7 +199,16 @@ const PhotographerEventsList: React.FC<EventsListProps> = ({ onNavigate }) => {
                     <div className="p-6 space-y-4">
                       <div>
                         <h3 className="text-sm font-black text-slate-900 truncate uppercase tracking-tight">{event.name}</h3>
-                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">{new Date(event.date).toLocaleDateString()}</p>
+                        <div className="flex flex-col gap-1 mt-1.5">
+                            <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest flex items-center gap-1">
+                                <Calendar className="w-3 h-3" /> {new Date(event.date).toLocaleDateString()}
+                            </p>
+                            {event.location && (
+                                <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest flex items-center gap-1 truncate">
+                                    <MapPin className="w-3 h-3" /> {event.location}
+                                </p>
+                            )}
+                        </div>
                       </div>
                       <div className="flex items-center justify-between pt-4 border-t border-slate-50">
                         <span className="px-2 py-0.5 bg-indigo-50 text-indigo-600 rounded text-[8px] font-black uppercase tracking-widest">{event.plan || 'BASIC'}</span>
@@ -249,7 +261,7 @@ const PhotographerEventsList: React.FC<EventsListProps> = ({ onNavigate }) => {
       {isModalOpen && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 overflow-y-auto">
           <div className="bg-white rounded-[3rem] w-full max-w-2xl overflow-hidden shadow-2xl flex flex-col my-auto border border-slate-100 max-h-[90vh]">
-            <div className="p-8 border-b border-slate-100 flex items-center justify-between">
+            <div className="p-8 border-b border-slate-100 flex items-center justify-between bg-white sticky top-0 z-10">
                <div>
                  <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tight">New Workflow Setup</h3>
                </div>
@@ -275,15 +287,35 @@ const PhotographerEventsList: React.FC<EventsListProps> = ({ onNavigate }) => {
                       ))}
                     </div>
                   </div>
+                  
                   <div className="grid grid-cols-2 gap-6">
                      <div className="space-y-2">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Event Date</label>
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Start Date *</label>
                         <input type="date" className="w-full p-5 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold" value={newEvent.startDate} onChange={e => setNewEvent({...newEvent, startDate: e.target.value})} />
                      </div>
                      <div className="space-y-2">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Client Quote (₹)</label>
-                        <input type="number" className="w-full p-5 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-black" value={newEvent.price} onChange={e => setNewEvent({...newEvent, price: parseInt(e.target.value) || 0})} />
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">End Date</label>
+                        <input type="date" className="w-full p-5 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold" value={newEvent.endDate} onChange={e => setNewEvent({...newEvent, endDate: e.target.value})} />
                      </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Venue Location</label>
+                    <div className="relative">
+                        <MapPin className="absolute left-5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                        <input 
+                            type="text" 
+                            placeholder="e.g. Taj Lands End, Mumbai" 
+                            className="w-full pl-12 pr-5 py-5 bg-slate-50 border border-slate-200 rounded-2xl outline-none text-sm font-bold" 
+                            value={newEvent.location} 
+                            onChange={e => setNewEvent({...newEvent, location: e.target.value})} 
+                        />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Client Quote (₹)</label>
+                    <input type="number" className="w-full p-5 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-black" value={newEvent.price} onChange={e => setNewEvent({...newEvent, price: parseInt(e.target.value) || 0})} />
                   </div>
                   
                   {/* Service Selection (User Story 27) */}

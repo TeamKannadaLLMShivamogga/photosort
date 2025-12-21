@@ -124,6 +124,8 @@ class User(MongoBaseModel):
 class Event(MongoBaseModel):
     name: str
     date: datetime
+    endDate: Optional[datetime] = None
+    location: Optional[str] = None
     photographerId: str
     coverImage: str
     photoCount: int = 0
