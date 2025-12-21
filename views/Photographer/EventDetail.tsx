@@ -4,7 +4,7 @@ import {
   Settings, Upload, Image as ImageIcon, CheckSquare, 
   Share2, X, Clock, Download, FileJson, Calendar, ChevronLeft, Loader2,
   Edit2, Zap, ShieldCheck, FileType, Sparkles, Wand2, CreditCard, ChevronDown, FolderOpen,
-  Database, Activity, Plus, Users, Trash2, GitPullRequest, Lock, Unlock, Send, MessageCircle, AlertCircle, CheckCircle, UploadCloud
+  Database, Activity, Plus, Users, Trash2, GitPullRequest, Lock, Unlock, Send, MessageCircle, AlertCircle, CheckCircle, UploadCloud, ChevronRight
 } from 'lucide-react';
 import { useData } from '../../context/DataContext';
 import GalleryView from '../../components/Gallery/GalleryView';
@@ -18,7 +18,7 @@ const PhotographerEventDetail: React.FC<{ onNavigate: (view: string) => void, in
   const { 
     activeEvent, updateEvent, photos, users, setActiveEvent, refreshPhotos, 
     recordPayment, assignUserToEvent, removeUserFromEvent, addSubEvent, updateEventWorkflow,
-    uploadEditedPhoto, addPhotoComment, resolveComment
+    uploadEditedPhoto, uploadBulkEditedPhotos, addPhotoComment, resolveComment
   } = useData();
   
   const [activeTab, setActiveTab] = useState<string>(initialTab || 'settings');
@@ -29,6 +29,7 @@ const PhotographerEventDetail: React.FC<{ onNavigate: (view: string) => void, in
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const editUploadRef = useRef<HTMLInputElement>(null);
+  const bulkEditUploadRef = useRef<HTMLInputElement>(null);
   const [activePhotoForEdit, setActivePhotoForEdit] = useState<string | null>(null);
   const [activePhotoForComments, setActivePhotoForComments] = useState<string | null>(null);
 
@@ -37,8 +38,9 @@ const PhotographerEventDetail: React.FC<{ onNavigate: (view: string) => void, in
   const [paymentAmount, setPaymentAmount] = useState<string>('');
   const [paymentDate, setPaymentDate] = useState<string>(new Date().toISOString().split('T')[0]);
 
-  // Upload State
+  // Upload State (Raw)
   const [selectedSubEvent, setSelectedSubEvent] = useState<string>('');
+  const [isRawUploadModalOpen, setIsRawUploadModalOpen] = useState(false);
   const [isSubEventModalOpen, setIsSubEventModalOpen] = useState(false);
   const [newSubEvent, setNewSubEvent] = useState({ name: '', date: '', endDate: '' });
 
@@ -121,12 +123,22 @@ const PhotographerEventDetail: React.FC<{ onNavigate: (view: string) => void, in
       }
   };
 
+  const handleBulkEditUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+      if (e.target.files && e.target.files.length > 0) {
+          setIsUploading(true);
+          setUploadStage('uploading');
+          setUploadProgress(10);
+          await uploadBulkEditedPhotos(activeEvent.id, e.target.files);
+          setUploadProgress(100);
+          setTimeout(() => setIsUploading(false), 1000);
+      }
+  };
+
   const tabs = [
     { id: 'settings', label: 'Settings', icon: Settings },
     { id: 'workflow', label: 'Workflow', icon: GitPullRequest },
-    { id: 'upload', label: 'Upload', icon: Upload },
-    { id: 'sorted', label: 'Gallery', icon: ImageIcon },
-    { id: 'selections', label: 'Selections', icon: CheckSquare },
+    { id: 'sorted', label: 'Gallery', icon: ImageIcon }, // Replaces Raw Upload
+    { id: 'selections', label: 'Selections', icon: CheckSquare }, // Contains Edit Upload
   ];
 
   const handleRealUpload = async (files: FileList) => {
@@ -150,7 +162,7 @@ const PhotographerEventDetail: React.FC<{ onNavigate: (view: string) => void, in
     setStats(s => ({ ...s, totalCount: totalFiles }));
 
     const formData = new FormData();
-    formData.append('subEventId', selectedSubEvent); // Send SubEvent ID
+    formData.append('subEventId', selectedSubEvent); 
 
     setUploadStage('optimizing');
     let totalSavedBytes = 0;
@@ -160,8 +172,6 @@ const PhotographerEventDetail: React.FC<{ onNavigate: (view: string) => void, in
         setCurrentFileName(file.name);
         
         if (useOptimization) {
-           // const result = await optimizeImage(file, optLevel); 
-           // formData.append('files', result.blob, file.name); 
            formData.append('files', file); 
            await new Promise(r => setTimeout(r, 20)); 
         } else {
@@ -194,7 +204,7 @@ const PhotographerEventDetail: React.FC<{ onNavigate: (view: string) => void, in
         setIsUploading(false);
         setUploadProgress(0);
         setCurrentFileName('');
-        setActiveTab('sorted');
+        setIsRawUploadModalOpen(false); // Close modal on success
 
     } catch (e) {
         console.error("Upload error", e);
@@ -227,10 +237,21 @@ const PhotographerEventDetail: React.FC<{ onNavigate: (view: string) => void, in
   const approvedCount = selectedPhotos.filter(p => p.reviewStatus === 'approved').length;
   const reworkCount = selectedPhotos.filter(p => p.reviewStatus === 'changes_requested').length;
 
+  const getStatusColor = (status: string) => {
+      switch(status) {
+          case 'open': return 'bg-blue-50 text-blue-700 border-blue-100';
+          case 'submitted': return 'bg-amber-50 text-amber-700 border-amber-100';
+          case 'editing': return 'bg-purple-50 text-purple-700 border-purple-100';
+          case 'review': return 'bg-orange-50 text-orange-700 border-orange-100';
+          case 'accepted': return 'bg-emerald-50 text-emerald-700 border-emerald-100';
+          default: return 'bg-slate-50 text-slate-700';
+      }
+  };
+
   return (
-    <div className="flex flex-col h-full bg-slate-50 -m-8 animate-in fade-in duration-500">
+    <div className="flex flex-col h-full bg-slate-50 -m-8 animate-in fade-in duration-500 relative">
       {/* Header */}
-      <div className="bg-white px-8 py-3 border-b border-slate-100 space-y-3 shadow-sm">
+      <div className="bg-white px-8 py-3 border-b border-slate-100 space-y-3 shadow-sm z-20 relative">
         <div className="flex items-center gap-4">
           <button 
             onClick={() => { setActiveEvent(null); onNavigate('events'); }}
@@ -244,19 +265,17 @@ const PhotographerEventDetail: React.FC<{ onNavigate: (view: string) => void, in
             </div>
             <div>
               <h1 className="text-lg font-bold text-slate-900 leading-none">{activeEvent.name}</h1>
-              <div className="flex items-center gap-3 mt-1">
-                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">{activeEvent.photoCount} photos</p>
-                  <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest ${
-                      activeEvent.selectionStatus === 'open' ? 'bg-blue-50 text-blue-600' :
-                      activeEvent.selectionStatus === 'submitted' ? 'bg-amber-50 text-amber-600' :
-                      activeEvent.selectionStatus === 'editing' ? 'bg-purple-50 text-purple-600' :
-                      activeEvent.selectionStatus === 'review' ? 'bg-orange-50 text-orange-600' :
-                      'bg-emerald-50 text-emerald-600'
-                  }`}>
-                      {activeEvent.selectionStatus}
-                  </span>
-              </div>
+              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mt-1">{activeEvent.photoCount} photos</p>
             </div>
+          </div>
+          
+          {/* Status Card (User Story 19) */}
+          <div className={`hidden md:flex items-center gap-3 px-4 py-2 rounded-xl border ${getStatusColor(activeEvent.selectionStatus)} shadow-sm ml-auto mr-4`}>
+             <div className="relative">
+                <div className="w-2.5 h-2.5 bg-current rounded-full animate-ping absolute opacity-75"></div>
+                <div className="w-2.5 h-2.5 bg-current rounded-full relative"></div>
+             </div>
+             <span className="text-[10px] font-black uppercase tracking-widest">{activeEvent.selectionStatus}</span>
           </div>
         </div>
 
@@ -279,7 +298,7 @@ const PhotographerEventDetail: React.FC<{ onNavigate: (view: string) => void, in
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 no-scrollbar">
-        {/* ... (Previous Tabs: Settings, Workflow, Upload, Gallery same as before) ... */}
+        {/* SETTINGS TAB */}
         {activeTab === 'settings' && (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start max-w-7xl mx-auto">
             {/* ... Content same as previously generated ... */}
@@ -368,7 +387,7 @@ const PhotographerEventDetail: React.FC<{ onNavigate: (view: string) => void, in
           </div>
         )}
 
-        {/* WORKFLOW TAB (NEW) */}
+        {/* WORKFLOW TAB */}
         {activeTab === 'workflow' && (
             <div className="max-w-5xl mx-auto space-y-8">
                 <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm space-y-8">
@@ -459,7 +478,6 @@ const PhotographerEventDetail: React.FC<{ onNavigate: (view: string) => void, in
                                     <h4 className="font-bold text-slate-900">In Review</h4>
                                     <p className="text-xs text-slate-500">Waiting for client feedback or approval.</p>
                                 </div>
-                                {/* Actions handled via photo comments mainly */}
                             </div>
                         )}
                         
@@ -479,145 +497,23 @@ const PhotographerEventDetail: React.FC<{ onNavigate: (view: string) => void, in
             </div>
         )}
 
-        {activeTab === 'upload' && (
-          <div className="max-w-5xl mx-auto space-y-4 animate-in fade-in duration-300">
-            {/* Same Upload Code as before... */}
-            {/* Sub Event Selector */}
-            <div className="bg-white p-4 rounded-3xl border border-slate-100 shadow-sm flex items-center gap-4">
-                <div className="flex-1">
-                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2 mb-1 block">Assign to Sub-Event</label>
-                    <div className="flex gap-2">
-                        <select 
-                            value={selectedSubEvent} 
-                            onChange={(e) => {
-                                if(e.target.value === 'new') setIsSubEventModalOpen(true);
-                                else setSelectedSubEvent(e.target.value);
-                            }}
-                            className="w-full p-3 bg-slate-50 border border-slate-100 rounded-xl text-xs font-bold outline-none focus:border-[#10B981]"
-                        >
-                            <option value="" disabled>Select Sub-Event</option>
-                            {activeEvent.subEvents.map(se => (
-                                <option key={se.id} value={se.id}>{se.name}</option>
-                            ))}
-                            <option value="new">+ Create New Sub-Event</option>
-                        </select>
-                    </div>
-                </div>
-            </div>
-
-            {/* Optimizer & Upload Box */}
-            <div className="bg-white p-4 rounded-3xl border border-slate-100 shadow-sm flex items-center justify-between gap-6">
-               <div className="flex items-center gap-4 flex-1">
-                  <div className={`p-2.5 rounded-2xl ${useOptimization ? 'bg-emerald-50 text-[#10B981]' : 'bg-slate-50 text-slate-400'}`}>
-                    <Sparkles className="w-5 h-5" />
-                  </div>
-                  <div className="min-w-fit">
-                    <h4 className="text-[13px] font-black text-slate-900 uppercase tracking-tight">Expert Image Optimizer</h4>
-                    <p className="text-[8px] text-slate-400 font-black uppercase tracking-[0.2em]">Source Metadata Analysis</p>
-                  </div>
-                  
-                  <div className="relative flex-1 max-w-sm ml-4">
-                    <select 
-                      value={optLevel}
-                      onChange={(e) => setOptLevel(e.target.value as OptimizationType)}
-                      disabled={!useOptimization}
-                      className={`w-full appearance-none pl-4 pr-10 py-2.5 rounded-xl border-2 text-[11px] font-bold outline-none transition-all ${
-                        useOptimization 
-                          ? 'bg-white border-slate-100 text-slate-900 focus:border-[#10B981]' 
-                          : 'bg-slate-50 border-slate-100 text-slate-400 cursor-not-allowed'
-                      }`}
-                    >
-                      {optStrategies.map(s => (
-                        <option key={s.id} value={s.id}>
-                          {s.label} ({s.reduction} Reduction)
-                        </option>
-                      ))}
-                    </select>
-                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
-                  </div>
-               </div>
-
-               <div className="flex items-center gap-3 px-4 py-2 bg-slate-50 rounded-2xl border border-slate-100">
-                  <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">AI OPTIMIZER</span>
-                  <label className="relative inline-flex items-center cursor-pointer scale-90">
-                    <input type="checkbox" className="sr-only peer" checked={useOptimization} onChange={() => setUseOptimization(!useOptimization)} />
-                    <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#10B981]"></div>
-                  </label>
-               </div>
-            </div>
-
-             <div className="bg-white p-12 rounded-[3rem] border-2 border-dashed border-slate-200 flex flex-col items-center justify-center gap-8 text-center transition-all hover:border-[#10B981]/40 overflow-hidden">
-              {isUploading ? (
-                <div className="w-full max-w-xl space-y-10 py-4 animate-in fade-in duration-300">
-                  <div className="flex flex-col items-center gap-6">
-                    {/* ... Loading Visuals Same as Before ... */}
-                    <div className="relative group">
-                      <div className="absolute inset-0 bg-[#10B981] rounded-[2.5rem] blur-xl opacity-20 group-hover:opacity-30 transition-opacity animate-pulse" />
-                      <div className="relative w-24 h-24 bg-slate-900 text-[#10B981] rounded-[2.5rem] flex items-center justify-center shadow-2xl">
-                        {uploadStage === 'analyzing' && <Database className="w-10 h-10 animate-bounce" />}
-                        {uploadStage === 'optimizing' && <Sparkles className="w-10 h-10 animate-pulse" />}
-                        {uploadStage === 'uploading' && <Upload className="w-10 h-10 animate-bounce" />}
-                        {uploadStage === 'indexing' && <Activity className="w-10 h-10 animate-spin" />}
-                      </div>
-                    </div>
-                    
-                    <div className="space-y-2">
-                      <h4 className="text-2xl font-black text-slate-900 tracking-tight uppercase">{uploadStage} Assets...</h4>
-                      <p className="text-[10px] text-[#10B981] font-black uppercase tracking-[0.3em] h-4">
-                        {currentFileName}
-                      </p>
-                    </div>
-                  </div>
-                  {/* ... Progress Bar ... */}
-                  <div className="relative px-8">
-                    <div className="flex items-center justify-between mb-2 text-[9px] font-black text-slate-400 uppercase tracking-widest">
-                      <span>Deployment Pipeline</span>
-                      <span>{uploadProgress}% Complete</span>
-                    </div>
-                    <div className="overflow-hidden h-3 flex rounded-full bg-slate-50 border border-slate-100 p-0.5">
-                      <div 
-                        style={{ width: `${uploadProgress}%` }} 
-                        className="shadow-inner flex flex-col text-center whitespace-nowrap text-white justify-center bg-[#10B981] transition-all duration-300 rounded-full"
-                      />
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <>
-                  <input 
-                    type="file" 
-                    ref={fileInputRef}
-                    onChange={handleFolderSelect}
-                    className="hidden"
-                    multiple
-                    {...({ webkitdirectory: "", directory: "" } as any)}
-                  />
-                  <div className="w-24 h-24 bg-slate-900 text-white rounded-[2.5rem] flex items-center justify-center shadow-2xl relative group-hover:scale-110 transition-transform cursor-pointer" onClick={triggerFolderUpload}>
-                    <FolderOpen className="w-10 h-10" />
-                  </div>
-                  <div className="space-y-2">
-                    <h4 className="text-2xl font-black text-slate-900 tracking-tight uppercase">SOURCE INGESTION</h4>
-                    <p className="text-sm text-slate-400 font-bold uppercase tracking-[0.2em] max-w-xs mx-auto">Upload Event Folder for AI-Processing</p>
-                  </div>
-                  <div className="flex gap-4 w-full max-w-sm">
+        {/* GALLERY TAB (Raw Images) */}
+        {activeTab === 'sorted' && (
+            <div className="max-w-7xl mx-auto h-full flex flex-col relative">
+                {/* Embed Upload Button in Header */}
+                <div className="absolute top-[-52px] right-0 z-30">
                     <button 
-                      onClick={triggerFolderUpload}
-                      disabled={!selectedSubEvent}
-                      className="w-full bg-[#10B981] hover:bg-slate-900 text-white px-8 py-5 rounded-2xl font-black uppercase tracking-[0.25em] flex items-center justify-center gap-3 transition-all shadow-xl shadow-[#10B981]/20 active:scale-95 text-[11px] disabled:opacity-50 disabled:cursor-not-allowed"
+                        onClick={() => setIsRawUploadModalOpen(true)}
+                        className="flex items-center gap-2 px-4 py-2 bg-[#10B981] text-white rounded-xl shadow-lg hover:bg-[#059669] transition-all text-[10px] font-black uppercase tracking-widest active:scale-95"
                     >
-                      <Zap className="w-4 h-4" /> Open Folder
+                        <UploadCloud className="w-4 h-4" /> Upload Raw Images
                     </button>
-                  </div>
-                </>
-              )}
+                </div>
+                <GalleryView />
             </div>
-          </div>
         )}
-
-        {/* Other Tabs */}
-        {activeTab === 'sorted' && <div className="max-w-7xl mx-auto h-full"><GalleryView /></div>}
         
-        {/* NEW SELECTIONS TAB (Story 10, 11, 12, 14) */}
+        {/* SELECTIONS TAB (Edited Images) */}
         {activeTab === 'selections' && (
           <div className="max-w-7xl mx-auto space-y-6">
              <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm flex items-center justify-between">
@@ -632,23 +528,33 @@ const PhotographerEventDetail: React.FC<{ onNavigate: (view: string) => void, in
                   </div>
                 </div>
                 <div className="flex gap-3">
-                  {activeEvent.selectionStatus === 'submitted' && (
-                      <button 
-                        onClick={() => handleWorkflowChange('open')}
-                        className="flex items-center gap-2 px-6 py-3 bg-white border border-slate-200 text-slate-600 font-black uppercase tracking-widest rounded-2xl text-[10px] hover:border-red-200 hover:text-red-500 transition-colors"
-                      >
-                        <Unlock className="w-4 h-4" /> Unlock Selection
-                      </button>
-                  )}
+                  <input 
+                    type="file" 
+                    ref={bulkEditUploadRef} 
+                    className="hidden" 
+                    multiple 
+                    accept="image/*" 
+                    onChange={handleBulkEditUpload}
+                  />
+                  <button 
+                    onClick={() => bulkEditUploadRef.current?.click()}
+                    className="flex items-center gap-2 px-6 py-3 bg-slate-900 text-white font-black uppercase tracking-widest rounded-2xl text-[10px] shadow-xl hover:bg-black transition-colors"
+                  >
+                    <UploadCloud className="w-4 h-4" /> Upload Edited Photos
+                  </button>
                   <button onClick={() => alert('Exporting sidecars...')} className="flex items-center gap-2 px-6 py-3 bg-indigo-50 text-indigo-600 font-black uppercase tracking-widest rounded-2xl text-[10px]">
                     <FileJson className="w-4 h-4" /> Export XMP
-                  </button>
-                  <button className="flex items-center gap-2 px-6 py-3 bg-slate-900 text-white font-black uppercase tracking-widest rounded-2xl text-[10px] shadow-xl">
-                    <Download className="w-4 h-4" /> Download Batch
                   </button>
                 </div>
              </div>
              
+             {isUploading && uploadStage === 'uploading' && (
+                 <div className="bg-indigo-50 border border-indigo-100 p-4 rounded-2xl flex items-center justify-center gap-4 animate-pulse">
+                     <Loader2 className="w-5 h-5 text-indigo-600 animate-spin" />
+                     <span className="text-xs font-bold text-indigo-700">Uploading edits... matching filenames...</span>
+                 </div>
+             )}
+
              <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
                <input 
                  type="file" 
@@ -689,6 +595,108 @@ const PhotographerEventDetail: React.FC<{ onNavigate: (view: string) => void, in
           </div>
         )}
       </div>
+
+      {/* RAW UPLOAD MODAL */}
+      {isRawUploadModalOpen && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+              <div className="bg-white rounded-[2.5rem] w-full max-w-2xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
+                  <div className="p-6 border-b border-slate-100 flex items-center justify-between">
+                      <h3 className="font-black text-slate-900 uppercase tracking-tight">Upload Raw Images</h3>
+                      <button onClick={() => setIsRawUploadModalOpen(false)}><X className="w-5 h-5 text-slate-400" /></button>
+                  </div>
+                  
+                  <div className="p-8 space-y-6 overflow-y-auto">
+                      {/* Sub Event Selector */}
+                        <div className="bg-slate-50 p-4 rounded-3xl border border-slate-100 shadow-sm flex items-center gap-4">
+                            <div className="flex-1">
+                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2 mb-1 block">Assign to Sub-Event</label>
+                                <div className="flex gap-2">
+                                    <select 
+                                        value={selectedSubEvent} 
+                                        onChange={(e) => {
+                                            if(e.target.value === 'new') setIsSubEventModalOpen(true);
+                                            else setSelectedSubEvent(e.target.value);
+                                        }}
+                                        className="w-full p-3 bg-white border border-slate-200 rounded-xl text-xs font-bold outline-none focus:border-[#10B981]"
+                                    >
+                                        <option value="" disabled>Select Sub-Event</option>
+                                        {activeEvent.subEvents.map(se => (
+                                            <option key={se.id} value={se.id}>{se.name}</option>
+                                        ))}
+                                        <option value="new">+ Create New Sub-Event</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Optimizer & Upload Box */}
+                        <div className="bg-white p-12 rounded-[2rem] border-2 border-dashed border-slate-200 flex flex-col items-center justify-center gap-8 text-center transition-all hover:border-[#10B981]/40 overflow-hidden">
+                        {isUploading ? (
+                            <div className="w-full max-w-xl space-y-10 py-4 animate-in fade-in duration-300">
+                            <div className="flex flex-col items-center gap-6">
+                                <div className="relative group">
+                                <div className="absolute inset-0 bg-[#10B981] rounded-[2.5rem] blur-xl opacity-20 group-hover:opacity-30 transition-opacity animate-pulse" />
+                                <div className="relative w-24 h-24 bg-slate-900 text-[#10B981] rounded-[2.5rem] flex items-center justify-center shadow-2xl">
+                                    {uploadStage === 'analyzing' && <Database className="w-10 h-10 animate-bounce" />}
+                                    {uploadStage === 'optimizing' && <Sparkles className="w-10 h-10 animate-pulse" />}
+                                    {uploadStage === 'uploading' && <Upload className="w-10 h-10 animate-bounce" />}
+                                    {uploadStage === 'indexing' && <Activity className="w-10 h-10 animate-spin" />}
+                                </div>
+                                </div>
+                                
+                                <div className="space-y-2">
+                                <h4 className="text-2xl font-black text-slate-900 tracking-tight uppercase">{uploadStage} Assets...</h4>
+                                <p className="text-[10px] text-[#10B981] font-black uppercase tracking-[0.3em] h-4">
+                                    {currentFileName}
+                                </p>
+                                </div>
+                            </div>
+                            <div className="relative px-8">
+                                <div className="flex items-center justify-between mb-2 text-[9px] font-black text-slate-400 uppercase tracking-widest">
+                                <span>Deployment Pipeline</span>
+                                <span>{uploadProgress}% Complete</span>
+                                </div>
+                                <div className="overflow-hidden h-3 flex rounded-full bg-slate-50 border border-slate-100 p-0.5">
+                                <div 
+                                    style={{ width: `${uploadProgress}%` }} 
+                                    className="shadow-inner flex flex-col text-center whitespace-nowrap text-white justify-center bg-[#10B981] transition-all duration-300 rounded-full"
+                                />
+                                </div>
+                            </div>
+                            </div>
+                        ) : (
+                            <>
+                            <input 
+                                type="file" 
+                                ref={fileInputRef}
+                                onChange={handleFolderSelect}
+                                className="hidden"
+                                multiple
+                                {...({ webkitdirectory: "", directory: "" } as any)}
+                            />
+                            <div className="w-24 h-24 bg-slate-900 text-white rounded-[2.5rem] flex items-center justify-center shadow-2xl relative group-hover:scale-110 transition-transform cursor-pointer" onClick={triggerFolderUpload}>
+                                <FolderOpen className="w-10 h-10" />
+                            </div>
+                            <div className="space-y-2">
+                                <h4 className="text-2xl font-black text-slate-900 tracking-tight uppercase">SOURCE INGESTION</h4>
+                                <p className="text-sm text-slate-400 font-bold uppercase tracking-[0.2em] max-w-xs mx-auto">Upload Event Folder for AI-Processing</p>
+                            </div>
+                            <div className="flex gap-4 w-full max-w-sm">
+                                <button 
+                                onClick={triggerFolderUpload}
+                                disabled={!selectedSubEvent}
+                                className="w-full bg-[#10B981] hover:bg-slate-900 text-white px-8 py-5 rounded-2xl font-black uppercase tracking-[0.25em] flex items-center justify-center gap-3 transition-all shadow-xl shadow-[#10B981]/20 active:scale-95 text-[11px] disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                <Zap className="w-4 h-4" /> Open Folder
+                                </button>
+                            </div>
+                            </>
+                        )}
+                        </div>
+                  </div>
+              </div>
+          </div>
+      )}
 
       {/* Edit Details Modal */}
       {isEditDetailsOpen && (

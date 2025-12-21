@@ -120,6 +120,7 @@ class Event(MongoBaseModel):
 class Photo(MongoBaseModel):
     url: str
     editedUrl: Optional[str] = None
+    originalFilename: Optional[str] = None
     eventId: str
     subEventId: Optional[str] = None
     tags: List[str] = []
@@ -359,9 +360,18 @@ async def upload_photos(id: str, subEventId: Optional[str] = Form(None), files: 
         with open(fpath, "wb") as f: f.write(content)
         url = f"/uploads/{id}/{fname}"
         saved.append({
-            "url": url, "eventId": id, "subEventId": subEventId, "tags": [], "people": [],
-            "isAiPick": False, "quality": "medium", "isSelected": False, "isAiProcessed": False,
-            "originalSize": len(content), "optimizedSize": 0
+            "url": url, 
+            "eventId": id, 
+            "subEventId": subEventId, 
+            "tags": [], 
+            "people": [],
+            "isAiPick": False, 
+            "quality": "medium", 
+            "isSelected": False, 
+            "isAiProcessed": False,
+            "originalSize": len(content), 
+            "optimizedSize": 0,
+            "originalFilename": file.filename # Save original filename
         })
     if not saved: return []
     res = await db.photos.insert_many(saved)
@@ -369,6 +379,49 @@ async def upload_photos(id: str, subEventId: Optional[str] = Form(None), files: 
     await db.events.update_one({"_id": ObjectId(id)}, {"$set": {"photoCount": count}})
     if background_tasks: background_tasks.add_task(trigger_ai_service, id)
     return await db.photos.find({"_id": {"$in": res.inserted_ids}}).to_list(None)
+
+@app.post("/api/events/{id}/photos/bulk-edit", response_model=List[Photo])
+async def bulk_upload_edits(id: str, files: List[UploadFile] = File(...)):
+    """
+    Matches uploaded edited files to original photos by originalFilename.
+    """
+    event_dir = UPLOAD_DIR / id
+    event_dir.mkdir(parents=True, exist_ok=True)
+    
+    updated_photos = []
+    
+    # 1. Fetch all photos for this event that are selected or candidates for editing
+    #    (or all photos to be safe)
+    cursor = db.photos.find({"eventId": id}, {"_id": 1, "originalFilename": 1})
+    photos_map = {doc["originalFilename"]: doc["_id"] for doc in await cursor.to_list(None) if doc.get("originalFilename")}
+    
+    for file in files:
+        # Match logic: Exact filename match
+        if file.filename in photos_map:
+            photo_id = photos_map[file.filename]
+            
+            # Save file
+            ext = os.path.splitext(file.filename)[1] or ".jpg"
+            fname = f"edit_{uuid.uuid4()}{ext}"
+            fpath = event_dir / fname
+            
+            content = await file.read()
+            with open(fpath, "wb") as f: f.write(content)
+            
+            edited_url = f"/uploads/{id}/{fname}"
+            
+            # Update DB
+            await db.photos.update_one(
+                {"_id": photo_id},
+                {"$set": {"editedUrl": edited_url}}
+            )
+            updated_photos.append(photo_id)
+            
+    # Return updated photos
+    if not updated_photos:
+        return []
+        
+    return await db.photos.find({"_id": {"$in": updated_photos}}).to_list(None)
 
 @app.post("/api/photos/{id}/edit", response_model=Photo)
 async def upload_edited_photo(id: str, file: UploadFile = File(...)):

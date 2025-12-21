@@ -145,6 +145,7 @@ class Event(MongoBaseModel):
 class Photo(MongoBaseModel):
     url: str
     editedUrl: Optional[str] = None
+    originalFilename: Optional[str] = None
     eventId: str
     subEventId: Optional[str] = None
     tags: List[str] = []

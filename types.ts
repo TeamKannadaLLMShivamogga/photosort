@@ -58,6 +58,7 @@ export interface Photo {
   id: string;
   url: string;
   editedUrl?: string; // For the edited version
+  originalFilename?: string; // For tracking matching edits
   eventId: string;
   subEventId?: string;
   tags: string[];

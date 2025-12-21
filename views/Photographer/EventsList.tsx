@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { useData } from '../../context/DataContext';
 import { 
   Plus, Calendar, Search, ArrowRight, MoreVertical, X, 
-  Image as ImageIcon, Filter, LayoutGrid, List, ChevronRight, Mail, Phone, Check, CreditCard, Ticket, Sparkles, ShieldCheck, Eye, Trash2, User
+  Image as ImageIcon, Filter, LayoutGrid, List, ChevronRight, Mail, Phone, Check, CreditCard, Ticket, Sparkles, ShieldCheck, Eye, Trash2, User, AlertCircle
 } from 'lucide-react';
 import { EventPlan } from '../../types';
 
@@ -12,7 +12,7 @@ interface EventsListProps {
 }
 
 const PhotographerEventsList: React.FC<EventsListProps> = ({ onNavigate }) => {
-  const { events, currentUser, setActiveEvent, addEvent, users } = useData();
+  const { events, currentUser, setActiveEvent, addEvent, users, photos } = useData();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [step, setStep] = useState(1);
   const [viewType, setViewType] = useState<'card' | 'list'>('card');
@@ -109,6 +109,16 @@ const PhotographerEventsList: React.FC<EventsListProps> = ({ onNavigate }) => {
   const handleEventClick = (event: any) => {
     setActiveEvent(event);
     if (onNavigate) onNavigate('event-settings');
+  };
+
+  const checkActionRequired = (event: any) => {
+      // Logic: 
+      // 1. If status is submitted (Photographer needs to start editing)
+      // 2. If status is review (Photographer waiting for user, but maybe needs to check comments? Actually if reviewStatus is changes_requested)
+      // Since photos are lazy loaded, we might not know 'changes_requested' count here easily without backend support.
+      // For now, rely on Event status 'submitted'.
+      if (event.selectionStatus === 'submitted') return true;
+      return false;
   };
 
   const coverOptions = [
@@ -211,39 +221,47 @@ const PhotographerEventsList: React.FC<EventsListProps> = ({ onNavigate }) => {
       {myEvents.length > 0 ? (
         viewType === 'card' ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-6">
-            {myEvents.map(event => (
-              <div 
-                key={event.id} 
-                onClick={() => handleEventClick(event)} 
-                className="group bg-white rounded-[2.5rem] overflow-hidden shadow-sm hover:shadow-2xl transition-all border border-slate-100 flex flex-col cursor-pointer animate-in fade-in zoom-in-95 duration-300"
-              >
-                <div className="relative aspect-[16/10] overflow-hidden">
-                  <img src={event.coverImage} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" alt="" />
-                  <div className={`absolute top-4 right-4 px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest backdrop-blur-md shadow-lg ${
-                    event.status === 'active' ? 'bg-[#10B981]/90 text-white' : 'bg-slate-900/90 text-white'
-                  }`}>
-                    {event.status}
-                  </div>
-                </div>
-                <div className="p-6 space-y-4">
-                  <div>
-                    <h3 className="text-sm font-black text-slate-900 truncate uppercase tracking-tight">{event.name}</h3>
-                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">{new Date(event.date).toLocaleDateString()}</p>
-                  </div>
-                  <div className="flex items-center justify-between pt-4 border-t border-slate-50">
-                    <div className="flex items-center gap-2">
-                      <span className="px-2 py-0.5 bg-indigo-50 text-indigo-600 rounded text-[8px] font-black uppercase tracking-widest">
-                        {event.plan || 'BASIC'}
-                      </span>
+            {myEvents.map(event => {
+                const actionRequired = checkActionRequired(event);
+                return (
+                  <div 
+                    key={event.id} 
+                    onClick={() => handleEventClick(event)} 
+                    className={`group bg-white rounded-[2.5rem] overflow-hidden shadow-sm hover:shadow-2xl transition-all border flex flex-col cursor-pointer animate-in fade-in zoom-in-95 duration-300 relative ${actionRequired ? 'border-amber-400 ring-2 ring-amber-100' : 'border-slate-100'}`}
+                  >
+                    {actionRequired && (
+                        <div className="absolute top-0 left-0 right-0 bg-amber-400 text-white text-[9px] font-black uppercase tracking-widest text-center py-1 z-20 shadow-sm flex items-center justify-center gap-1">
+                            <AlertCircle className="w-3 h-3" /> Action Required
+                        </div>
+                    )}
+                    <div className="relative aspect-[16/10] overflow-hidden">
+                      <img src={event.coverImage} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" alt="" />
+                      <div className={`absolute top-4 right-4 px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest backdrop-blur-md shadow-lg ${
+                        event.status === 'active' ? 'bg-[#10B981]/90 text-white' : 'bg-slate-900/90 text-white'
+                      }`}>
+                        {event.status}
+                      </div>
                     </div>
-                    <div className="flex items-center gap-1 text-[10px] font-black text-slate-900">
-                      <ImageIcon className="w-3 h-3 text-slate-300" />
-                      {event.photoCount}
+                    <div className="p-6 space-y-4">
+                      <div>
+                        <h3 className="text-sm font-black text-slate-900 truncate uppercase tracking-tight">{event.name}</h3>
+                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">{new Date(event.date).toLocaleDateString()}</p>
+                      </div>
+                      <div className="flex items-center justify-between pt-4 border-t border-slate-50">
+                        <div className="flex items-center gap-2">
+                          <span className="px-2 py-0.5 bg-indigo-50 text-indigo-600 rounded text-[8px] font-black uppercase tracking-widest">
+                            {event.plan || 'BASIC'}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1 text-[10px] font-black text-slate-900">
+                          <ImageIcon className="w-3 h-3 text-slate-300" />
+                          {event.photoCount}
+                        </div>
+                      </div>
                     </div>
                   </div>
-                </div>
-              </div>
-            ))}
+                );
+            })}
           </div>
         ) : (
           <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden overflow-x-auto no-scrollbar animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -317,9 +335,10 @@ const PhotographerEventsList: React.FC<EventsListProps> = ({ onNavigate }) => {
         </div>
       )}
 
-      {/* Create Event Modal */}
+      {/* Create Event Modal logic same as before... */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 overflow-y-auto">
+          {/* ... Modal content preserved ... */}
           <div className="bg-white rounded-[3rem] w-full max-w-2xl overflow-hidden shadow-2xl animate-in zoom-in-95 duration-300 flex flex-col my-auto border border-slate-100 max-h-[90vh]">
             <div className="p-8 border-b border-slate-100 flex items-center justify-between">
                <div>
@@ -328,8 +347,10 @@ const PhotographerEventsList: React.FC<EventsListProps> = ({ onNavigate }) => {
                </div>
                <button onClick={resetModal} className="p-2 hover:bg-slate-100 rounded-full transition-colors"><X className="w-5 h-5 text-slate-400" /></button>
             </div>
-            
+            {/* ... rest of the modal implementation ... */}
             <div className="p-10 overflow-y-auto no-scrollbar">
+              {/* ... (Existing Modal Steps Code) ... */}
+              {/* NOTE: Preserving existing modal code logic here implicitly for brevity in response, assuming user context keeps it */}
               {step === 1 && (
                 <div className="space-y-8 animate-in slide-in-from-right-4 duration-300">
                    <div className="space-y-2">
@@ -342,30 +363,16 @@ const PhotographerEventsList: React.FC<EventsListProps> = ({ onNavigate }) => {
                       onChange={e => setNewEvent({...newEvent, name: e.target.value})} 
                     />
                   </div>
-
-                  {/* Client Management Section */}
+                  {/* ... client inputs ... */}
                   <div className="space-y-4">
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Client Access List</label>
                     <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-4">
                       <div className="flex gap-2">
-                        <input 
-                          type="text" placeholder="Name" 
-                          className="flex-1 p-3 bg-white rounded-xl text-xs font-bold outline-none border border-transparent focus:border-[#10B981]" 
-                          value={tempClient.name} onChange={e => setTempClient({...tempClient, name: e.target.value})}
-                        />
-                        <input 
-                          type="email" placeholder="Email" 
-                          className="flex-1 p-3 bg-white rounded-xl text-xs font-bold outline-none border border-transparent focus:border-[#10B981]" 
-                          value={tempClient.email} onChange={e => setTempClient({...tempClient, email: e.target.value})}
-                        />
-                        <input 
-                          type="tel" placeholder="Phone" 
-                          className="w-24 p-3 bg-white rounded-xl text-xs font-bold outline-none border border-transparent focus:border-[#10B981]" 
-                          value={tempClient.phone} onChange={e => setTempClient({...tempClient, phone: e.target.value})}
-                        />
+                        <input type="text" placeholder="Name" className="flex-1 p-3 bg-white rounded-xl text-xs font-bold outline-none border border-transparent focus:border-[#10B981]" value={tempClient.name} onChange={e => setTempClient({...tempClient, name: e.target.value})} />
+                        <input type="email" placeholder="Email" className="flex-1 p-3 bg-white rounded-xl text-xs font-bold outline-none border border-transparent focus:border-[#10B981]" value={tempClient.email} onChange={e => setTempClient({...tempClient, email: e.target.value})} />
+                        <input type="tel" placeholder="Phone" className="w-24 p-3 bg-white rounded-xl text-xs font-bold outline-none border border-transparent focus:border-[#10B981]" value={tempClient.phone} onChange={e => setTempClient({...tempClient, phone: e.target.value})} />
                         <button onClick={handleAddClient} className="p-3 bg-slate-900 text-white rounded-xl hover:bg-black transition-colors"><Plus className="w-4 h-4" /></button>
                       </div>
-                      
                       {clientList.length > 0 && (
                         <div className="flex flex-wrap gap-2">
                           {clientList.map((client, idx) => (
@@ -382,38 +389,20 @@ const PhotographerEventsList: React.FC<EventsListProps> = ({ onNavigate }) => {
                       )}
                     </div>
                   </div>
-
+                  {/* ... date and price ... */}
                   <div className="grid grid-cols-2 gap-6">
                      <div className="space-y-2">
                         <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Event Date</label>
-                        <input 
-                          type="date" 
-                          className="w-full p-5 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold text-slate-900 focus:bg-white focus:ring-4 focus:ring-[#10B981]/5 transition-all" 
-                          value={newEvent.startDate} 
-                          onChange={e => setNewEvent({...newEvent, startDate: e.target.value})} 
-                        />
+                        <input type="date" className="w-full p-5 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold text-slate-900 focus:bg-white focus:ring-4 focus:ring-[#10B981]/5 transition-all" value={newEvent.startDate} onChange={e => setNewEvent({...newEvent, startDate: e.target.value})} />
                      </div>
                      <div className="space-y-2">
                         <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Client Quote (₹)</label>
-                        <input 
-                          type="number" 
-                          placeholder="0"
-                          className="w-full p-5 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-black text-slate-900 focus:bg-white focus:ring-4 focus:ring-[#10B981]/5 transition-all" 
-                          value={newEvent.price} 
-                          onChange={e => setNewEvent({...newEvent, price: parseInt(e.target.value) || 0})} 
-                        />
+                        <input type="number" placeholder="0" className="w-full p-5 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-black text-slate-900 focus:bg-white focus:ring-4 focus:ring-[#10B981]/5 transition-all" value={newEvent.price} onChange={e => setNewEvent({...newEvent, price: parseInt(e.target.value) || 0})} />
                      </div>
                   </div>
-                  <button 
-                    disabled={!newEvent.name || !newEvent.startDate || clientList.length === 0} 
-                    onClick={() => setStep(2)} 
-                    className="w-full py-5 bg-slate-900 text-white rounded-[1.5rem] font-black uppercase tracking-[0.25em] disabled:opacity-20 transition-all shadow-2xl active:scale-95 text-[11px]"
-                  >
-                    Continue to Plans
-                  </button>
+                  <button disabled={!newEvent.name || !newEvent.startDate || clientList.length === 0} onClick={() => setStep(2)} className="w-full py-5 bg-slate-900 text-white rounded-[1.5rem] font-black uppercase tracking-[0.25em] disabled:opacity-20 transition-all shadow-2xl active:scale-95 text-[11px]">Continue to Plans</button>
                 </div>
               )}
-
               {step === 2 && (
                 <div className="space-y-8 animate-in fade-in duration-300">
                   <div className="text-center space-y-2">
@@ -422,19 +411,13 @@ const PhotographerEventsList: React.FC<EventsListProps> = ({ onNavigate }) => {
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                     {plans.map(p => (
-                      <div 
-                        key={p.id} 
-                        onClick={() => handleSelectPlan(p.id, p.price)} 
-                        className={`p-6 rounded-[2.5rem] border-2 cursor-pointer transition-all hover:shadow-xl flex flex-col justify-between h-full group ${p.color} ${newEvent.plan === p.id ? 'border-[#10B981] ring-4 ring-[#10B981]/10' : 'hover:border-[#10B981]/40'}`}
-                      >
+                      <div key={p.id} onClick={() => handleSelectPlan(p.id, p.price)} className={`p-6 rounded-[2.5rem] border-2 cursor-pointer transition-all hover:shadow-xl flex flex-col justify-between h-full group ${p.color} ${newEvent.plan === p.id ? 'border-[#10B981] ring-4 ring-[#10B981]/10' : 'hover:border-[#10B981]/40'}`}>
                          <div>
                             <h5 className="font-black text-slate-900 text-[10px] uppercase mb-4 tracking-widest">{p.name}</h5>
                             <p className="text-3xl font-black mb-6">₹{p.price}</p>
                             <ul className="space-y-3">
                               {p.features.map((f, i) => (
-                                <li key={i} className="text-[9px] text-slate-500 font-bold flex gap-2">
-                                  <Check className="w-3 h-3 text-[#10B981] shrink-0" /> {f}
-                                </li>
+                                <li key={i} className="text-[9px] text-slate-500 font-bold flex gap-2"><Check className="w-3 h-3 text-[#10B981] shrink-0" /> {f}</li>
                               ))}
                             </ul>
                          </div>
@@ -444,15 +427,13 @@ const PhotographerEventsList: React.FC<EventsListProps> = ({ onNavigate }) => {
                   </div>
                 </div>
               )}
-
               {step === 3 && (
                 <div className="space-y-8 animate-in slide-in-from-bottom-4 duration-300">
+                   {/* ... Payment details ... */}
                    <div className="bg-slate-50 p-8 rounded-[2.5rem] border border-slate-100 space-y-6">
                       <div className="flex justify-between items-center pb-4 border-b border-slate-200">
                          <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center text-indigo-600 shadow-sm border border-slate-100">
-                               <Sparkles className="w-5 h-5" />
-                            </div>
+                            <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center text-indigo-600 shadow-sm border border-slate-100"><Sparkles className="w-5 h-5" /></div>
                             <div>
                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">TIER SELECTION</p>
                                <p className="text-sm font-black text-slate-900 uppercase tracking-tight">{newEvent.plan} PACKAGE</p>
@@ -461,13 +442,7 @@ const PhotographerEventsList: React.FC<EventsListProps> = ({ onNavigate }) => {
                          <span className="text-lg font-black text-slate-900">₹{newEvent.serviceFee}</span>
                       </div>
                       <div className="flex gap-3">
-                         <input 
-                           type="text" 
-                           placeholder="COUPON (PHOTOSORT)" 
-                           className="flex-1 p-4 bg-white border border-slate-200 rounded-2xl text-[11px] font-black text-slate-900 uppercase tracking-widest outline-none focus:border-[#10B981]" 
-                           value={couponCode} 
-                           onChange={e => setCouponCode(e.target.value)} 
-                         />
+                         <input type="text" placeholder="COUPON (PHOTOSORT)" className="flex-1 p-4 bg-white border border-slate-200 rounded-2xl text-[11px] font-black text-slate-900 uppercase tracking-widest outline-none focus:border-[#10B981]" value={couponCode} onChange={e => setCouponCode(e.target.value)} />
                          <button onClick={handleApplyCoupon} className="px-6 py-4 bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest">Apply</button>
                       </div>
                       <div className="pt-6 border-t border-slate-200 flex justify-between items-center">
@@ -476,15 +451,8 @@ const PhotographerEventsList: React.FC<EventsListProps> = ({ onNavigate }) => {
                       </div>
                    </div>
                    <div className="space-y-4">
-                      <button 
-                        onClick={handleFinalSubmit} 
-                        className="w-full py-6 bg-slate-900 text-white rounded-[1.5rem] font-black uppercase tracking-[0.25em] shadow-2xl active:scale-95 transition-all text-[11px] flex items-center justify-center gap-3"
-                      >
-                         <CreditCard className="w-5 h-5" /> Complete Deployment
-                      </button>
-                      <p className="text-center text-[9px] text-slate-400 font-bold uppercase tracking-widest flex items-center justify-center gap-2">
-                         <ShieldCheck className="w-4 h-4" /> SSL Encrypted Transaction
-                      </p>
+                      <button onClick={handleFinalSubmit} className="w-full py-6 bg-slate-900 text-white rounded-[1.5rem] font-black uppercase tracking-[0.25em] shadow-2xl active:scale-95 transition-all text-[11px] flex items-center justify-center gap-3"><CreditCard className="w-5 h-5" /> Complete Deployment</button>
+                      <p className="text-center text-[9px] text-slate-400 font-bold uppercase tracking-widest flex items-center justify-center gap-2"><ShieldCheck className="w-4 h-4" /> SSL Encrypted Transaction</p>
                    </div>
                 </div>
               )}

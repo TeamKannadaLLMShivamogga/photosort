@@ -34,6 +34,7 @@ interface DataContextType {
   removeUserFromEvent: (eventId: string, userId: string) => Promise<void>;
   updateEventWorkflow: (eventId: string, status: SelectionStatus, deliveryEstimate?: string, note?: string) => Promise<void>;
   uploadEditedPhoto: (photoId: string, file: File) => Promise<void>;
+  uploadBulkEditedPhotos: (eventId: string, files: FileList) => Promise<void>;
   addPhotoComment: (photoId: string, text: string) => Promise<void>;
   updatePhotoReviewStatus: (photoId: string, status: 'approved' | 'changes_requested') => Promise<void>;
   resolveComment: (photoId: string, commentId: string) => Promise<void>;
@@ -352,6 +353,26 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setPhotos(prev => prev.map(p => p.id === photoId ? updatedPhoto : p));
   };
 
+  const uploadBulkEditedPhotos = async (eventId: string, files: FileList) => {
+      const formData = new FormData();
+      Array.from(files).forEach(file => {
+          formData.append('files', file);
+      });
+      
+      const res = await fetch(`${API_URL}/events/${eventId}/photos/bulk-edit`, {
+          method: 'POST',
+          body: formData
+      });
+      
+      if(res.ok) {
+          await loadPhotos(eventId);
+          // Advance workflow if applicable
+          if (activeEvent?.selectionStatus === 'submitted' || activeEvent?.selectionStatus === 'editing') {
+              updateEventWorkflow(eventId, 'review');
+          }
+      }
+  };
+
   const addPhotoComment = async (photoId: string, text: string) => {
       if (!currentUser) return;
       const res = await fetch(`${API_URL}/photos/${photoId}/comment`, {
@@ -404,7 +425,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       login, logout, setActiveEvent, togglePhotoSelection, submitSelections,
       addEvent, updateEvent, deleteEvent, addUser, updateUser, deleteUser, addSubEvent, removeSubEvent,
       toggleUserStatus, refreshPhotos, recordPayment, assignUserToEvent, removeUserFromEvent,
-      updateEventWorkflow, uploadEditedPhoto, addPhotoComment, updatePhotoReviewStatus, resolveComment, approveAllEdits
+      updateEventWorkflow, uploadEditedPhoto, uploadBulkEditedPhotos, addPhotoComment, updatePhotoReviewStatus, resolveComment, approveAllEdits
     }}>
       {children}
     </DataContext.Provider>
