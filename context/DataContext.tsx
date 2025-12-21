@@ -117,12 +117,28 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [events, setEvents] = useState<Event[]>([]);
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
-  const [activeEvent, setActiveEvent] = useState<Event | null>(null);
+  const [activeEvent, _setActiveEvent] = useState<Event | null>(null);
   const [selectedPhotos, setSelectedPhotos] = useState<Set<string>>(new Set());
+
+  // Wrapper to persist active event
+  const setActiveEvent = (event: Event | null) => {
+    _setActiveEvent(event);
+    if (event) {
+        localStorage.setItem('photoSortActiveEventId', event.id);
+    } else {
+        localStorage.removeItem('photoSortActiveEventId');
+    }
+  };
 
   // Initialize and Fetch Initial Data
   useEffect(() => {
     const fetchData = async () => {
+      // 1. Optimistic Restore
+      const storedUser = localStorage.getItem('photoSortUser');
+      if (storedUser) {
+          try { setCurrentUser(JSON.parse(storedUser)); } catch (e) { console.error("Failed to parse stored user", e); }
+      }
+
       try {
         const [usersRes, eventsRes] = await Promise.all([
           fetch(`${API_URL}/users`),
@@ -133,17 +149,29 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         const usersData = await usersRes.json();
         const eventsData = await eventsRes.json();
+        
+        console.log(`%c[DB Connected] Loaded ${usersData.length} Users and ${eventsData.length} Events`, 'color: #10B981; font-weight: bold;');
+
         setUsers(usersData);
         setEvents(eventsData);
 
-        // Restore Session if available
-        const storedUser = localStorage.getItem('photoSortUser');
+        // 2. Sync Session with fresh data
         if (storedUser) {
             const parsedUser = JSON.parse(storedUser);
-            // Verify if user still exists in the fetched data (optional but safer)
-            const freshUser = usersData.find((u: User) => u.email === parsedUser.email);
+            // Match by ID or Email
+            const freshUser = usersData.find((u: User) => u.id === parsedUser.id || u.email === parsedUser.email);
             if (freshUser) {
                 setCurrentUser(freshUser);
+                localStorage.setItem('photoSortUser', JSON.stringify(freshUser));
+            }
+        }
+
+        // 3. Restore Active Event
+        const storedEventId = localStorage.getItem('photoSortActiveEventId');
+        if (storedEventId) {
+            const rehydratedEvent = eventsData.find((e: Event) => e.id === storedEventId);
+            if (rehydratedEvent) {
+                _setActiveEvent(rehydratedEvent);
             }
         }
 
@@ -161,7 +189,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       try {
         const res = await fetch(`${API_URL}/events/${eventId}/photos`);
         if (!res.ok) throw new Error("Backend unavailable");
-        const data = await res.json() as Photo[]; // Explicit casting
+        const data = await res.json() as Photo[];
+        console.log(`%c[DB Connected] Loaded ${data.length} Photos for Event ${eventId}`, 'color: #10B981; font-weight: bold;');
         setPhotos(data);
         const selected = new Set(data.filter((p) => p.isSelected).map((p) => p.id));
         setSelectedPhotos(selected);
@@ -210,6 +239,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
         setCurrentUser(user);
         localStorage.setItem('photoSortUser', JSON.stringify(user));
+        
+        // Add to users list if not present
+        setUsers(prev => {
+            if (!prev.find(u => u.id === user.id)) return [...prev, user];
+            return prev;
+        });
       }
     } catch (err) {
       console.warn("Backend Login failed. Trying offline login.", err);
@@ -242,6 +277,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setActiveEvent(null);
     setSelectedPhotos(new Set());
     localStorage.removeItem('photoSortUser');
+    localStorage.removeItem('photoSortActiveEventId');
   };
 
   const togglePhotoSelection = async (id: string) => {
