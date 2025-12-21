@@ -130,6 +130,15 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  // Helper to normalize ID from _id if necessary
+  const normalizeData = (item: any) => {
+    if (!item) return item;
+    return {
+      ...item,
+      id: item.id || item._id, // Handle both MongoDB _id and API id
+    };
+  };
+
   // Initialize and Fetch Initial Data
   useEffect(() => {
     const fetchData = async () => {
@@ -145,12 +154,18 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           fetch(`${API_URL}/events`)
         ]);
         
-        if (!usersRes.ok || !eventsRes.ok) throw new Error("Backend unavailable");
+        if (!usersRes.ok) throw new Error(`Users API Error: ${usersRes.statusText}`);
+        if (!eventsRes.ok) throw new Error(`Events API Error: ${eventsRes.statusText}`);
 
-        const usersData = await usersRes.json();
-        const eventsData = await eventsRes.json();
+        const rawUsersData = await usersRes.json();
+        const rawEventsData = await eventsRes.json();
         
+        // Normalize Data (Ensure 'id' exists)
+        const usersData = Array.isArray(rawUsersData) ? rawUsersData.map(normalizeData) : [];
+        const eventsData = Array.isArray(rawEventsData) ? rawEventsData.map(normalizeData) : [];
+
         console.log(`%c[DB Connected] Loaded ${usersData.length} Users and ${eventsData.length} Events`, 'color: #10B981; font-weight: bold;');
+        console.log("Raw Events Data Sample:", eventsData[0]);
 
         setUsers(usersData);
         setEvents(eventsData);
@@ -176,7 +191,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
 
       } catch (error) {
-        console.warn("Failed to fetch backend data. Switching to OFFLINE MODE.", error);
+        console.error("Backend Connection Failed:", error);
+        console.warn("Switching to OFFLINE MODE with MOCK DATA.");
+        
         // Fallback to mock data
         setUsers(MOCK_USERS);
         setEvents(MOCK_EVENTS);
@@ -188,11 +205,15 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const loadPhotos = async (eventId: string) => {
       try {
         const res = await fetch(`${API_URL}/events/${eventId}/photos`);
-        if (!res.ok) throw new Error("Backend unavailable");
-        const data = await res.json() as Photo[];
+        if (!res.ok) throw new Error("Backend unavailable for photos");
+        
+        const rawData = await res.json();
+        const data = Array.isArray(rawData) ? rawData.map(normalizeData) : [];
+        
         console.log(`%c[DB Connected] Loaded ${data.length} Photos for Event ${eventId}`, 'color: #10B981; font-weight: bold;');
+        
         setPhotos(data);
-        const selected = new Set(data.filter((p) => p.isSelected).map((p) => p.id));
+        const selected = new Set(data.filter((p: Photo) => p.isSelected).map((p: Photo) => p.id));
         setSelectedPhotos(selected);
       } catch (err) {
         console.warn("Failed to load photos. Using offline photos if matching ID found.", err);
@@ -231,7 +252,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         body: JSON.stringify({ email })
       });
       if (!res.ok) throw new Error("Login failed");
-      const user = await res.json();
+      const rawUser = await res.json();
+      const user = normalizeData(rawUser);
+
       if (user) {
         if (user.isActive === false && user.role === UserRole.PHOTOGRAPHER) {
           alert("Your account has been disabled by the administrator.");
@@ -315,7 +338,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         body: JSON.stringify(eventData)
       });
       if (!res.ok) throw new Error("Failed to add event");
-      const newEvent = await res.json();
+      const newEvent = normalizeData(await res.json());
       setEvents(prev => [...prev, newEvent]);
     } catch (err) {
       console.warn("Backend unavailable. Adding event locally.");
@@ -339,7 +362,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         body: JSON.stringify(updated)
       });
       if (!res.ok) throw new Error("Failed");
-      const saved = await res.json();
+      const saved = normalizeData(await res.json());
       setEvents(prev => prev.map(e => e.id === saved.id ? saved : e));
       if (activeEvent?.id === saved.id) setActiveEvent(saved);
     } catch (err) { 
@@ -366,7 +389,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         body: JSON.stringify(userData)
         });
         if(!res.ok) throw new Error("Failed");
-        const newUser = await res.json();
+        const newUser = normalizeData(await res.json());
         setUsers(prev => [...prev, newUser]);
     } catch (e) {
         console.warn("Backend unavailable. Adding user locally.");
@@ -383,7 +406,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         body: JSON.stringify(updatedUser)
         });
         if(!res.ok) throw new Error("Failed");
-        const saved = await res.json();
+        const saved = normalizeData(await res.json());
         setUsers(prev => prev.map(u => u.id === saved.id ? saved : u));
         if (currentUser?.id === saved.id) {
             setCurrentUser(saved);
@@ -424,7 +447,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
         const res = await fetch(`${API_URL}/users/${userId}/status`, { method: 'PATCH' });
         if(!res.ok) throw new Error("Failed");
-        const data = await res.json();
+        const data = normalizeData(await res.json());
         setUsers(prev => prev.map(u => u.id === userId ? { ...u, isActive: data.isActive } : u));
     } catch (e) {
         console.warn("Backend unavailable. Toggling status locally.");
@@ -440,7 +463,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             body: JSON.stringify({ amount, date })
         });
         if (!res.ok) throw new Error("Payment record failed");
-        const updatedEvent = await res.json();
+        const updatedEvent = normalizeData(await res.json());
         setEvents(prev => prev.map(e => e.id === eventId ? updatedEvent : e));
         if (activeEvent?.id === eventId) setActiveEvent(updatedEvent);
     } catch (e) {
