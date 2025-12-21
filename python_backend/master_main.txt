@@ -1,5 +1,6 @@
 import os
 import shutil
+import uuid
 from datetime import datetime
 from typing import List, Optional, Literal, Set
 from contextlib import asynccontextmanager
@@ -334,16 +335,23 @@ async def upload_photos(id: str, files: List[UploadFile] = File(...), background
     """
     saved_photos = []
     
+    # Ensure directory exists
+    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    
     for file in files:
-        # Create unique filename
-        timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
-        safe_filename = f"{timestamp}_{file.filename.replace(' ', '_')}"
+        # Create unique filename using UUID
+        file_ext = os.path.splitext(file.filename)[1]
+        if not file_ext:
+            file_ext = ".jpg"
+            
+        safe_filename = f"{uuid.uuid4()}{file_ext}"
         file_path = UPLOAD_DIR / safe_filename
         
-        # Save to disk
+        # Save to disk using standard write for reliability
         try:
-            with file_path.open("wb") as buffer:
-                shutil.copyfileobj(file.file, buffer)
+            content = await file.read()
+            with open(file_path, "wb") as f:
+                f.write(content)
         except Exception as e:
             print(f"Error saving file {safe_filename}: {e}")
             continue
@@ -361,7 +369,7 @@ async def upload_photos(id: str, files: List[UploadFile] = File(...), background
             "quality": "medium",
             "isSelected": False,
             "isAiProcessed": False,
-            "originalSize": file.size if hasattr(file, 'size') else 0,
+            "originalSize": len(content),
             "optimizedSize": 0
         }
         saved_photos.append(new_photo)

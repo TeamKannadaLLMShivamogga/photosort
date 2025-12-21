@@ -3,11 +3,11 @@ import {
   Settings, Upload, Image as ImageIcon, CheckSquare, 
   Share2, X, Clock, Download, FileJson, Calendar, ChevronLeft, Loader2,
   Edit2, Zap, ShieldCheck, FileType, Sparkles, Wand2, CreditCard, ChevronDown, FolderOpen,
-  Database, Activity, Plus
+  Database, Activity, Plus, Users
 } from 'lucide-react';
 import { useData } from '../../context/DataContext';
 import GalleryView from '../../components/Gallery/GalleryView';
-import { SubEvent, Event, OptimizationType, Photo } from '../../types';
+import { SubEvent, Event, OptimizationType, Photo, UserRole } from '../../types';
 import { optimizeImage } from '../../utils/imageOptimizer';
 
 const API_URL = 'http://localhost:8000/api';
@@ -478,15 +478,48 @@ const PhotographerEventDetail: React.FC<{ onNavigate: (view: string) => void, in
       {/* Edit Details Modal */}
       {isEditDetailsOpen && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-          <div className="bg-white rounded-[2.5rem] w-full max-md overflow-hidden shadow-2xl">
+          <div className="bg-white rounded-[2.5rem] w-full max-w-lg overflow-hidden shadow-2xl">
             <div className="p-6 border-b border-slate-100 flex items-center justify-between">
               <h3 className="font-black text-slate-900 uppercase tracking-tight">Configuration</h3>
               <button onClick={() => setIsEditDetailsOpen(false)} className="p-2 hover:bg-slate-100 rounded-full transition-colors"><X className="w-5 h-5 text-slate-400" /></button>
             </div>
-            <div className="p-8 space-y-6">
+            <div className="p-8 space-y-6 max-h-[70vh] overflow-y-auto no-scrollbar">
               <div className="space-y-2">
                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Event Name</label>
                 <input type="text" className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold outline-none text-slate-900" value={editForm.name || ''} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} />
+              </div>
+              
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 flex items-center gap-2">
+                  <Users className="w-3 h-3" /> Assigned Clients
+                </label>
+                <div className="max-h-40 overflow-y-auto border border-slate-200 rounded-2xl p-2 space-y-1 bg-slate-50">
+                  {users.filter(u => u.role === UserRole.USER).length > 0 ? (
+                    users.filter(u => u.role === UserRole.USER).map(user => (
+                      <label key={user.id} className="flex items-center gap-3 p-2 hover:bg-white rounded-xl cursor-pointer transition-colors">
+                        <input 
+                          type="checkbox" 
+                          className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                          checked={editForm.assignedUsers?.includes(user.id)}
+                          onChange={(e) => {
+                             const current = editForm.assignedUsers || [];
+                             if (e.target.checked) {
+                               setEditForm({...editForm, assignedUsers: [...current, user.id]});
+                             } else {
+                               setEditForm({...editForm, assignedUsers: current.filter(id => id !== user.id)});
+                             }
+                          }}
+                        />
+                        <div className="flex flex-col">
+                            <span className="text-xs font-bold text-slate-800">{user.name}</span>
+                            <span className="text-[10px] text-slate-400">{user.email}</span>
+                        </div>
+                      </label>
+                    ))
+                  ) : (
+                    <p className="text-center text-xs text-slate-400 py-4">No clients found</p>
+                  )}
+                </div>
               </div>
             </div>
             <div className="p-8 bg-slate-50 flex gap-4">
