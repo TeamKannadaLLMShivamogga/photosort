@@ -23,6 +23,12 @@ const UserSelections: React.FC = () => {
   };
   const { statuses, currentIdx } = getTimelineStatus();
 
+  const handleSubmitSelections = async () => {
+      if (confirm("Are you sure you want to submit your selections for editing? This will lock your current selection.")) {
+          await submitSelections();
+      }
+  };
+
   return (
     <div className="space-y-8 animate-in fade-in duration-500 max-w-7xl mx-auto pb-20">
       
@@ -91,10 +97,10 @@ const UserSelections: React.FC = () => {
                 
                 {selectedPhotos.size > 0 && !isLocked && (
                   <button 
-                    onClick={submitSelections}
+                    onClick={handleSubmitSelections}
                     className="px-8 py-3.5 bg-[#10B981] text-white font-bold rounded-2xl shadow-lg shadow-[#10B981]/20 hover:bg-[#059669] transition-all flex items-center gap-2 active:scale-95"
                   >
-                    <Send className="w-4 h-4" /> Submit for Editing
+                    <Send className="w-4 h-4" /> Submit for Edit
                   </button>
                 )}
               </div>
