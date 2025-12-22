@@ -101,8 +101,9 @@ export interface Photo {
 export interface SubEvent {
   id: string;
   name: string;
-  date: string; // Used as display date or start date
+  date: string;
   endDate?: string;
+  location?: string;
 }
 
 export interface EventTimeline {

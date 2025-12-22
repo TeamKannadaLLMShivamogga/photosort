@@ -43,8 +43,6 @@ class MongoBaseModel(BaseModel):
     )
 
 # --- Models ---
-# (Importing from models.txt essentially, duplicating here for single file context if needed by user env, 
-# but relying on the updated models.txt structure is better practice. For this XML response, I will include relevant classes)
 
 UserRole = Literal['ADMIN', 'PHOTOGRAPHER', 'USER']
 SubscriptionTier = Literal['FREE', 'PRO', 'STUDIO']
@@ -103,6 +101,7 @@ class SubEvent(BaseModel):
     name: str
     date: datetime
     endDate: Optional[datetime] = None
+    location: Optional[str] = None
 
 class User(MongoBaseModel):
     email: str
@@ -278,9 +277,9 @@ async def seed_data():
         paymentStatus='partial',
         plan='PRO',
         subEvents=[
-            SubEvent(id="se-1", name="Haldi", date=event_date),
-            SubEvent(id="se-2", name="Wedding", date=event_date),
-            SubEvent(id="se-3", name="Reception", date=event_date)
+            SubEvent(id="se-1", name="Haldi", date=event_date, location="Jaipur"),
+            SubEvent(id="se-2", name="Wedding", date=event_date, location="Jaipur"),
+            SubEvent(id="se-3", name="Reception", date=event_date, location="Delhi")
         ]
     )
     await db.events.insert_one(event.model_dump(by_alias=True, exclude=["id"]))
@@ -315,9 +314,11 @@ async def resolve_and_create_user(name: str, email: str, phone: Optional[str] = 
     # Clean inputs
     email_clean = email.strip().lower()
     
-    query = {"email": email_clean}
-    if phone:
-        query = {"$or": [{"email": email_clean}, {"phone": phone}]}
+    query_parts = [{"email": email_clean}]
+    if phone and len(phone.strip()) > 5:
+        query_parts.append({"phone": phone.strip()})
+    
+    query = {"$or": query_parts}
     
     existing_user = await db.users.find_one(query)
     
@@ -338,8 +339,6 @@ async def resolve_and_create_user(name: str, email: str, phone: Optional[str] = 
 @app.get("/")
 def read_root():
     return {"status": "Master Backend Running"}
-
-# ... (Previous Auth, User, Event Routes kept largely same, added new ones below) ...
 
 @app.post("/api/admin/reset")
 async def reset_database():
@@ -462,9 +461,21 @@ async def create_event(payload: CreateEventRequest):
     current_assigned = event_dict.get("assignedUsers") or []
     event_dict["assignedUsers"] = list(set(current_assigned + assigned_ids))
     
-    # Ensure SubEvents
+    # Ensure SubEvents - Use supplied ones or create default
     if not event_dict.get("subEvents"):
-         event_dict["subEvents"] = [SubEvent(id=f"se-{datetime.now().timestamp()}", name="Main Event", date=payload.date).model_dump()]
+         event_dict["subEvents"] = [
+             SubEvent(
+                 id=f"se-{datetime.now().timestamp()}", 
+                 name="Main Event", 
+                 date=payload.date,
+                 location=payload.location
+             ).model_dump()
+         ]
+    else:
+        # Ensure IDs exist
+        for se in event_dict["subEvents"]:
+            if not se.get("id"):
+                se["id"] = f"se-{uuid.uuid4()}"
     
     new_event = await db.events.insert_one(event_dict)
     return await db.events.find_one({"_id": new_event.inserted_id})
@@ -536,7 +547,6 @@ async def update_addon_status(id: str, request_id: str, payload: AddonStatusUpda
         {"_id": ObjectId(id), "addonRequests.id": request_id},
         {"$set": {"addonRequests.$.status": payload.status}}
     )
-    # If approved, add to selectedServices if not already there (Optional logic, handled by frontend usually)
     return await db.events.find_one({"_id": ObjectId(id)})
 
 # --- NEW: Face Renaming Endpoint ---
