@@ -201,8 +201,8 @@ const GalleryView: React.FC<GalleryViewProps> = ({ initialTab, isPhotographer, o
           </div>
           
           <div className="flex items-center gap-2">
-            {/* Photographer Actions for Edited Tab */}
-            {isPhotographer && mainTab === 'edited' && (
+            {/* Photographer Actions for Selected Tab (moved from Edited) */}
+            {isPhotographer && mainTab === 'selected' && (
                 <div className="flex items-center gap-2 mr-2">
                     {activeEvent?.selectionStatus !== 'open' && (
                         <button 
@@ -211,25 +211,25 @@ const GalleryView: React.FC<GalleryViewProps> = ({ initialTab, isPhotographer, o
                                     updateEventWorkflow(activeEvent!.id, 'open');
                                 }
                             }}
-                            className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl transition-colors"
+                            className="flex items-center gap-2 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl transition-colors text-[10px] font-bold uppercase tracking-widest"
                             title="Unlock Selection"
                         >
-                            <Unlock className="w-4 h-4" />
+                            <Unlock className="w-4 h-4" /> Unlock
                         </button>
                     )}
                     <button 
                         onClick={() => setIsStatusModalOpen(true)}
-                        className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl transition-colors"
+                        className="flex items-center gap-2 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl transition-colors text-[10px] font-bold uppercase tracking-widest"
                         title="Update Status & Delivery"
                     >
-                        <Clock className="w-4 h-4" />
+                        <Clock className="w-4 h-4" /> Status
                     </button>
                     <button 
                         onClick={handleDownloadAll}
-                        className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl transition-colors"
-                        title="Download All Edited"
+                        className="flex items-center gap-2 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl transition-colors text-[10px] font-bold uppercase tracking-widest"
+                        title="Download Selected"
                     >
-                        <Download className="w-4 h-4" />
+                        <Download className="w-4 h-4" /> Download
                     </button>
                 </div>
             )}
