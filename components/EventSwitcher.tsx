@@ -2,12 +2,21 @@
 import React, { useState } from 'react';
 import { ChevronDown, Check, Calendar } from 'lucide-react';
 import { useData } from '../context/DataContext';
+import { UserRole } from '../types';
 
 const EventSwitcher: React.FC = () => {
   const { events, currentUser, activeEvent, setActiveEvent } = useData();
   const [isOpen, setIsOpen] = useState(false);
 
-  const myEvents = events.filter(e => e.assignedUsers.includes(currentUser?.id || ''));
+  const myEvents = events.filter(e => {
+    if (!currentUser) return false;
+    // For photographers, show events they created
+    if (currentUser.role === UserRole.PHOTOGRAPHER) {
+        return e.photographerId === currentUser.id;
+    }
+    // For users, show events they are assigned to
+    return e.assignedUsers.includes(currentUser.id);
+  });
 
   if (!activeEvent || myEvents.length <= 1) return null;
 

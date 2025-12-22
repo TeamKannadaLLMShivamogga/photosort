@@ -90,7 +90,8 @@ const Sidebar: React.FC<SidebarProps> = ({ onNavigate, currentView, isOpen, onCl
           </button>
         </div>
 
-        {currentUser?.role === UserRole.USER && <EventSwitcher />}
+        {/* Enable Event Switcher for both User and Photographer roles */}
+        {(currentUser?.role === UserRole.USER || currentUser?.role === UserRole.PHOTOGRAPHER) && <EventSwitcher />}
 
         <nav className="flex-1 px-4 py-6 space-y-1 overflow-y-auto no-scrollbar">
           {navItems.map((item: any) => {
