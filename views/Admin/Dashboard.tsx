@@ -4,7 +4,7 @@ import {
   Users, Calendar, Database, TrendingUp, 
   CheckCircle, Mail, Settings, Trash2, Edit2, Zap, CreditCard,
   Search, Filter, LayoutGrid, List, ChevronRight, X, Eye, Wallet,
-  ShieldCheck, ShieldAlert, ToggleLeft, ToggleRight, Camera, User as UserIcon
+  ShieldCheck, ShieldAlert, ToggleLeft, ToggleRight, Camera, User as UserIcon, AlertTriangle
 } from 'lucide-react';
 import { 
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
@@ -18,13 +18,14 @@ interface AdminDashboardProps {
 }
 
 const AdminDashboard: React.FC<AdminDashboardProps> = ({ view = 'overview', onNavigate }) => {
-  const { events, users, setActiveEvent, toggleUserStatus } = useData();
+  const { events, users, setActiveEvent, toggleUserStatus, resetDatabase } = useData();
   const [eventViewType, setEventViewType] = useState<'card' | 'list'>('list');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'completed'>('all');
   const [selectedPhotographer, setSelectedPhotographer] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
+  const [isResetModalOpen, setIsResetModalOpen] = useState(false);
 
   const photographers = users.filter(u => u.role === UserRole.PHOTOGRAPHER);
   const totalPhotos = events.reduce((acc, e) => acc + e.photoCount, 0);
@@ -54,6 +55,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ view = 'overview', onNa
   const handleViewEvent = (event: any) => {
     setActiveEvent(event);
     if (onNavigate) onNavigate('event-settings');
+  };
+
+  const handleResetDatabase = async () => {
+      await resetDatabase();
+      setIsResetModalOpen(false);
   };
 
   const renderOverview = () => (
@@ -448,7 +454,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ view = 'overview', onNa
   };
 
   const renderSettings = () => (
-    <div className="max-w-3xl space-y-8 animate-in slide-in-from-bottom-8 duration-500">
+    <div className="max-w-3xl space-y-8 animate-in slide-in-from-bottom-8 duration-500 pb-20">
       <div className="bg-white p-6 sm:p-10 rounded-[3rem] border border-slate-100 shadow-sm space-y-8">
         <div className="flex items-center gap-3 border-b border-slate-50 pb-6">
           <Mail className="w-6 h-6 text-indigo-600" />
@@ -472,6 +478,24 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ view = 'overview', onNa
           ))}
         </div>
       </div>
+
+      {/* Danger Zone */}
+      <div className="bg-red-50 p-6 sm:p-10 rounded-[3rem] border border-red-100 shadow-sm space-y-6">
+          <div className="flex items-center gap-3">
+              <AlertTriangle className="w-6 h-6 text-red-600" />
+              <h3 className="text-xl font-black text-red-900 uppercase tracking-tight">Danger Zone</h3>
+          </div>
+          <p className="text-sm font-medium text-red-700 leading-relaxed">
+              Resetting the database will permanently delete all events, photos, uploads, and user accounts. 
+              The system will revert to the initial demo state with default seed data.
+          </p>
+          <button 
+              onClick={() => setIsResetModalOpen(true)}
+              className="px-8 py-4 bg-red-600 text-white rounded-2xl font-black uppercase tracking-[0.2em] hover:bg-red-700 transition-all shadow-xl shadow-red-600/20 active:scale-95 text-xs"
+          >
+              Reset Database
+          </button>
+      </div>
     </div>
   );
 
@@ -486,7 +510,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ view = 'overview', onNa
   };
 
   return (
-    <div className="space-y-6 sm:space-y-10 max-w-7xl mx-auto">
+    <div className="space-y-6 sm:space-y-10 max-w-7xl mx-auto relative">
       <div className="flex flex-col gap-1 sm:gap-2">
         <h1 className="text-3xl sm:text-4xl font-black text-slate-900 uppercase tracking-tighter">{getTitle()}</h1>
         <p className="text-slate-400 text-[10px] font-bold uppercase tracking-[0.3em] opacity-80">Super Admin Console</p>
@@ -497,6 +521,37 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ view = 'overview', onNa
       {view === 'users' && renderUsers()}
       {view === 'settings' && renderSettings()}
       {view === 'subscriptions' && renderSubscriptions()}
+
+      {/* Reset Confirmation Modal */}
+      {isResetModalOpen && (
+          <div className="fixed inset-0 bg-red-900/40 backdrop-blur-md z-[100] flex items-center justify-center p-4">
+              <div className="bg-white rounded-[2.5rem] w-full max-w-md p-8 shadow-2xl space-y-6 border-2 border-red-100">
+                  <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mx-auto text-red-500">
+                      <AlertTriangle className="w-8 h-8" />
+                  </div>
+                  <div className="text-center space-y-2">
+                      <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tight">Confirm Reset?</h3>
+                      <p className="text-slate-500 font-medium text-sm">
+                          This action is irreversible. All data including uploaded photos will be wiped.
+                      </p>
+                  </div>
+                  <div className="flex gap-3 pt-2">
+                      <button 
+                          onClick={() => setIsResetModalOpen(false)}
+                          className="flex-1 py-4 text-xs font-black uppercase tracking-widest text-slate-500 hover:bg-slate-50 rounded-2xl transition-colors"
+                      >
+                          Cancel
+                      </button>
+                      <button 
+                          onClick={handleResetDatabase}
+                          className="flex-1 py-4 bg-red-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl hover:bg-red-700 transition-all"
+                      >
+                          Yes, Wipe Everything
+                      </button>
+                  </div>
+              </div>
+          </div>
+      )}
     </div>
   );
 };

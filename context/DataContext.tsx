@@ -46,6 +46,7 @@ interface DataContextType {
   updateAddonStatus: (eventId: string, requestId: string, status: AddonStatus) => Promise<void>;
   renamePersonInEvent: (eventId: string, oldName: string, newName: string) => Promise<void>;
   uploadAsset: (file: File) => Promise<string>;
+  resetDatabase: () => Promise<void>;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -502,6 +503,21 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return data.url;
   };
 
+  const resetDatabase = async () => {
+      try {
+          const res = await fetch(`${API_URL}/admin/reset`, { method: 'POST' });
+          if (res.ok) {
+              logout();
+              window.location.reload();
+          } else {
+              alert("Failed to reset database");
+          }
+      } catch (e) {
+          console.error("Reset failed", e);
+          alert("Error connecting to server");
+      }
+  };
+
   return (
     <DataContext.Provider value={{
       currentUser, users, events, photos, notifications, activeEvent, selectedPhotos, isLoading,
@@ -510,7 +526,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       toggleUserStatus, refreshPhotos, recordPayment, assignUserToEvent, removeUserFromEvent,
       updateEventWorkflow, uploadEditedPhoto, uploadBulkEditedPhotos, addPhotoComment, updatePhotoReviewStatus, resolveComment, approveAllEdits, deletePhoto,
       updateUserServices, updateUserPortfolio, requestAddon, updateAddonStatus, renamePersonInEvent,
-      uploadAsset
+      uploadAsset, resetDatabase
     }}>
       {children}
     </DataContext.Provider>

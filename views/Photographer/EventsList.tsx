@@ -39,7 +39,8 @@ const PhotographerEventsList: React.FC<EventsListProps> = ({ onNavigate }) => {
   const [discountApplied, setDiscountApplied] = useState(false);
   const [finalAmount, setFinalAmount] = useState(499);
 
-  const availableServices = currentUser?.services?.filter(s => s.type === 'service') || [];
+  // Allow Add-ons to be selected as well (Request 3)
+  const availableServices = currentUser?.services?.filter(s => s.type === 'service' || s.type === 'addon') || [];
 
   const plans = [
     { id: EventPlan.BASIC, name: 'Basic', price: 499, features: ['Up to 500 photos', 'Standard AI Sorting'], color: 'border-slate-200' },
@@ -98,7 +99,8 @@ const PhotographerEventsList: React.FC<EventsListProps> = ({ onNavigate }) => {
       endDate: newEvent.endDate,
       location: newEvent.location,
       photographerId: currentUser?.id,
-      paymentStatus: 'paid',
+      paymentStatus: 'pending', // Corrected Default: Pending
+      paidAmount: 0, // Corrected Default: 0 Paid
       initialClients: clientList,
       clientEmail: clientList.length > 0 ? clientList[0].email : '', 
       clientPhone: clientList.length > 0 ? clientList[0].phone : '', 
@@ -321,7 +323,7 @@ const PhotographerEventsList: React.FC<EventsListProps> = ({ onNavigate }) => {
                   {/* Service Selection (User Story 27) */}
                   {availableServices.length > 0 && (
                       <div className="space-y-2">
-                          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Included Services</label>
+                          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Included Services & Add-ons</label>
                           <div className="grid grid-cols-2 gap-2">
                               {availableServices.map(service => (
                                   <div 
@@ -329,7 +331,10 @@ const PhotographerEventsList: React.FC<EventsListProps> = ({ onNavigate }) => {
                                     onClick={() => toggleService(service)}
                                     className={`p-3 rounded-xl border cursor-pointer transition-all ${newEvent.selectedServices.find(s => s.id === service.id) ? 'bg-indigo-50 border-indigo-500 text-indigo-700' : 'bg-white border-slate-200 text-slate-500'}`}
                                   >
-                                      <p className="text-xs font-bold">{service.name}</p>
+                                      <p className="text-xs font-bold flex items-center gap-1">
+                                          {service.name} 
+                                          {service.type === 'addon' && <span className="text-[8px] bg-amber-100 text-amber-700 px-1 rounded">ADDON</span>}
+                                      </p>
                                       <p className="text-[9px]">₹{service.price}</p>
                                   </div>
                               ))}
@@ -368,9 +373,15 @@ const PhotographerEventsList: React.FC<EventsListProps> = ({ onNavigate }) => {
                          </div>
                          <span className="text-lg font-black text-slate-900">₹{newEvent.serviceFee}</span>
                       </div>
-                      <div className="pt-6 border-t border-slate-200 flex justify-between items-center">
-                         <span className="font-black text-slate-900 uppercase tracking-widest text-[11px]">Payable Amount</span>
-                         <span className="text-3xl font-black text-[#10B981]">₹{finalAmount}</span>
+                      <div className="pt-6 border-t border-slate-200 space-y-2">
+                         <div className="flex justify-between items-center">
+                            <span className="font-black text-slate-900 uppercase tracking-widest text-[11px]">Total Contract Value</span>
+                            <span className="text-3xl font-black text-[#10B981]">₹{finalAmount}</span>
+                         </div>
+                         <div className="flex justify-between items-center">
+                            <span className="font-bold text-slate-400 uppercase tracking-widest text-[9px]">Advance Paid Now</span>
+                            <span className="text-xs font-bold text-slate-500">₹0</span>
+                         </div>
                       </div>
                    </div>
                    <button onClick={handleFinalSubmit} className="w-full py-6 bg-slate-900 text-white rounded-[1.5rem] font-black uppercase tracking-[0.25em] shadow-2xl active:scale-95 transition-all text-[11px] flex items-center justify-center gap-3"><CreditCard className="w-5 h-5" /> Complete Deployment</button>
