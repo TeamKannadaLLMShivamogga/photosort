@@ -46,6 +46,7 @@ interface DataContextType {
   updateAddonStatus: (eventId: string, requestId: string, status: AddonStatus) => Promise<void>;
   renamePersonInEvent: (eventId: string, oldName: string, newName: string) => Promise<void>;
   uploadAsset: (file: File) => Promise<string>;
+  uploadRawPhotos: (eventId: string, files: FileList) => Promise<void>;
   resetDatabase: () => Promise<void>;
 }
 
@@ -503,6 +504,40 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return data.url;
   };
 
+  const uploadRawPhotos = async (eventId: string, files: FileList) => {
+      try {
+          // Upload all files first to get URLs
+          const uploadPromises = Array.from(files).map(file => uploadAsset(file));
+          const urls = await Promise.all(uploadPromises);
+
+          // Prepare payload for backend to create photo records
+          const photosPayload = urls.map(url => ({
+              url,
+              tags: [],
+              people: [],
+              isAiPick: false,
+              quality: 'high',
+              category: 'Unsorted',
+              isSelected: false
+          }));
+
+          // Save photo records
+          const res = await fetch(`${API_URL}/events/${eventId}/photos`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ photos: photosPayload })
+          });
+
+          if (!res.ok) throw new Error("Failed to save photos");
+
+          // Refresh photos
+          await loadPhotos(eventId);
+      } catch (error) {
+          console.error("Upload raw photos failed", error);
+          throw error;
+      }
+  };
+
   const resetDatabase = async () => {
       try {
           const res = await fetch(`${API_URL}/admin/reset`, { method: 'POST' });
@@ -526,7 +561,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       toggleUserStatus, refreshPhotos, recordPayment, assignUserToEvent, removeUserFromEvent,
       updateEventWorkflow, uploadEditedPhoto, uploadBulkEditedPhotos, addPhotoComment, updatePhotoReviewStatus, resolveComment, approveAllEdits, deletePhoto,
       updateUserServices, updateUserPortfolio, requestAddon, updateAddonStatus, renamePersonInEvent,
-      uploadAsset, resetDatabase
+      uploadAsset, uploadRawPhotos, resetDatabase
     }}>
       {children}
     </DataContext.Provider>

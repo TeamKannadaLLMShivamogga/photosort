@@ -1,3 +1,4 @@
+
 import React, { useState, useRef } from 'react';
 import { useData } from '../../context/DataContext';
 import { ArrowLeft, Upload, Users, Calendar, Settings, Image as ImageIcon, CheckCircle, Clock, AlertTriangle, ChevronRight, Lock, Unlock, RefreshCw } from 'lucide-react';
@@ -9,10 +10,8 @@ interface EventDetailProps {
 }
 
 const PhotographerEventDetail: React.FC<EventDetailProps> = ({ onNavigate, initialTab = 'overview' }) => {
-  const { activeEvent, photos, updateEventWorkflow, updateEvent, uploadBulkEditedPhotos, setActiveEvent } = useData();
+  const { activeEvent, photos, updateEventWorkflow, updateEvent, setActiveEvent } = useData();
   const [activeTab, setActiveTab] = useState(initialTab);
-  const [isUploading, setIsUploading] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   if (!activeEvent) return <div className="p-10 text-center">Event not found</div>;
 
@@ -23,30 +22,6 @@ const PhotographerEventDetail: React.FC<EventDetailProps> = ({ onNavigate, initi
   
   const totalPaid = activeEvent.paidAmount || 0;
   const balance = (activeEvent.price || 0) - totalPaid;
-
-  const handleRealUpload = async (files: FileList) => {
-    setIsUploading(true);
-    try {
-        // We use the context function which handles bulk upload
-        await uploadBulkEditedPhotos(activeEvent.id, files);
-        alert("Upload complete!");
-    } catch (e) {
-        console.error(e);
-        alert("Upload failed.");
-    } finally {
-        setIsUploading(false);
-    }
-  };
-
-  const handleFolderSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      handleRealUpload(e.target.files);
-    }
-  };
-
-  const triggerFolderUpload = () => {
-    fileInputRef.current?.click();
-  };
 
   const advanceWorkflow = (status: SelectionStatus) => {
       if (confirm(`Advance workflow status to ${status}?`)) {
@@ -82,27 +57,11 @@ const PhotographerEventDetail: React.FC<EventDetailProps> = ({ onNavigate, initi
         <div className="flex flex-col items-end gap-3">
             <div className="flex items-center gap-2">
                 <button 
-                  onClick={() => onNavigate('gallery')}
-                  className="px-5 py-2.5 bg-indigo-50 text-indigo-700 rounded-xl font-black uppercase tracking-widest text-[10px] hover:bg-indigo-100 transition-colors"
+                  onClick={() => onNavigate('event-gallery')}
+                  className="px-6 py-3 bg-indigo-50 text-indigo-700 rounded-2xl font-black uppercase tracking-widest text-[10px] hover:bg-indigo-100 transition-colors flex items-center gap-2 shadow-sm"
                 >
-                    View Gallery
+                    <ImageIcon className="w-4 h-4" /> Manage Photos
                 </button>
-                <button 
-                  onClick={triggerFolderUpload}
-                  disabled={isUploading}
-                  className="px-5 py-2.5 bg-slate-900 text-white rounded-xl font-black uppercase tracking-widest text-[10px] hover:bg-black transition-colors flex items-center gap-2 disabled:opacity-50"
-                >
-                    {isUploading ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />} 
-                    Upload Edits
-                </button>
-                <input 
-                    type="file" 
-                    ref={fileInputRef} 
-                    className="hidden" 
-                    multiple 
-                    accept="image/*" 
-                    onChange={handleFolderSelect} 
-                />
             </div>
             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
                 ID: {activeEvent.id.slice(-6)}
