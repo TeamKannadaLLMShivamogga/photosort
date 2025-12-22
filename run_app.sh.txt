@@ -60,7 +60,7 @@ echo "--> [2/5] Setting up Conda Environment..."
 if conda info --envs | grep -q "$ENV_NAME"; then
     echo "Environment '$ENV_NAME' already exists. Updating..."
     # Ensure nodejs is installed in existing env
-    conda install -n "$ENV_NAME" -c conda-forge nodejs=20 -y 2>/dev/null || conda install -n "$ENV_NAME" nodejs=20 -y
+    # conda install -n "$ENV_NAME" -c conda-forge nodejs=20 -y 2>/dev/null || conda install -n "$ENV_NAME" nodejs=20 -y
 else
     echo "Creating environment '$ENV_NAME'..."
     # Create with python and nodejs

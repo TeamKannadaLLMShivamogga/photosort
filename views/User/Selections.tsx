@@ -100,7 +100,7 @@ const UserSelections: React.FC = () => {
                     onClick={handleSubmitSelections}
                     className="px-8 py-3.5 bg-[#10B981] text-white font-bold rounded-2xl shadow-lg shadow-[#10B981]/20 hover:bg-[#059669] transition-all flex items-center gap-2 active:scale-95"
                   >
-                    <Send className="w-4 h-4" /> Submit for Edit
+                    <Send className="w-4 h-4" /> Submit for edit
                   </button>
                 )}
               </div>
@@ -135,6 +135,18 @@ const UserSelections: React.FC = () => {
                     <p className="text-slate-500 max-w-xs mx-auto font-medium leading-relaxed">Head over to the gallery to pick the most beautiful moments from your event.</p>
                   </div>
                 </div>
+              )}
+
+              {/* Floating Submit Button */}
+              {selectedPhotos.size > 0 && !isLocked && (
+                  <div className="fixed bottom-6 right-6 z-40">
+                      <button 
+                        onClick={handleSubmitSelections}
+                        className="px-6 py-4 bg-slate-900 text-white font-bold rounded-full shadow-2xl hover:bg-black transition-all flex items-center gap-3 animate-in slide-in-from-bottom-10 border-2 border-slate-800"
+                      >
+                          <Send className="w-4 h-4" /> Submit for reviewing
+                      </button>
+                  </div>
               )}
           </div>
       )}
