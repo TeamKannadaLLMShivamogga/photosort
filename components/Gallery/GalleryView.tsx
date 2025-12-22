@@ -2,13 +2,14 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { 
   Grid2X2, Sparkles, User, Calendar, Tag, Check, Filter, 
-  X, ChevronRight, Star, CheckCircle2, Image as ImageIcon, RotateCcw, Trash2, Edit2, UploadCloud, Lock, Unlock, AlertCircle, Download, Clock, Send
+  X, ChevronRight, Star, CheckCircle2, Image as ImageIcon, RotateCcw, Trash2, Edit2, UploadCloud, Lock, Unlock, AlertCircle, Download, Clock, Send, List, LayoutList
 } from 'lucide-react';
 import { useData } from '../../context/DataContext';
 import { Photo, SelectionStatus } from '../../types';
 
 type MainTabType = 'all' | 'selected' | 'edited';
 type SubTabType = 'grid' | 'ai' | 'people' | 'events' | 'tags';
+type ViewMode = 'grid' | 'feed';
 
 interface GalleryViewProps {
   initialTab?: string;
@@ -23,6 +24,7 @@ const GalleryView: React.FC<GalleryViewProps> = ({ initialTab, isPhotographer, o
   // Two-level Tab State
   const [mainTab, setMainTab] = useState<MainTabType>('all');
   const [subTab, setSubTab] = useState<SubTabType>('grid');
+  const [viewMode, setViewMode] = useState<ViewMode>('grid');
 
   const [selectedFilters, setSelectedFilters] = useState<{
     people: string[];
@@ -33,7 +35,6 @@ const GalleryView: React.FC<GalleryViewProps> = ({ initialTab, isPhotographer, o
     events: [],
     tags: []
   });
-  const [isModalOpen, setIsModalOpen] = useState(false);
   const [editPersonName, setEditPersonName] = useState<{old: string, new: string} | null>(null);
   
   // Status Update Modal State
@@ -150,6 +151,16 @@ const GalleryView: React.FC<GalleryViewProps> = ({ initialTab, isPhotographer, o
       }
   };
 
+  const handleDownload = (e: React.MouseEvent, url: string) => {
+      e.stopPropagation();
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'PhotoSort_Download.jpg';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+  };
+
   const isLocked = activeEvent?.selectionStatus !== 'open' && !isPhotographer;
 
   return (
@@ -186,6 +197,23 @@ const GalleryView: React.FC<GalleryViewProps> = ({ initialTab, isPhotographer, o
            </div>
 
            <div className="flex flex-wrap items-center gap-3">
+                <div className="flex bg-slate-100 p-1 rounded-xl mr-2">
+                    <button 
+                        onClick={() => setViewMode('grid')}
+                        className={`p-2 rounded-lg transition-all ${viewMode === 'grid' ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-400'}`}
+                        title="Grid View"
+                    >
+                        <Grid2X2 className="w-4 h-4" />
+                    </button>
+                    <button 
+                        onClick={() => setViewMode('feed')}
+                        className={`p-2 rounded-lg transition-all ${viewMode === 'feed' ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-400'}`}
+                        title="Linear Feed (Chronological)"
+                    >
+                        <LayoutList className="w-4 h-4" />
+                    </button>
+                </div>
+
                {isPhotographer ? (
                    <>
                        <button onClick={onUploadClick} className="px-4 py-3 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-black flex items-center gap-2">
@@ -271,58 +299,122 @@ const GalleryView: React.FC<GalleryViewProps> = ({ initialTab, isPhotographer, o
            </div>
        )}
 
-       {/* Grid */}
-       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 2xl:grid-cols-6 gap-4">
-           {filteredPhotos.map(photo => {
-               const isSelected = selectedPhotos.has(photo.id);
-               return (
-                   <div key={photo.id} className={`group relative aspect-[4/5] bg-slate-100 rounded-2xl overflow-hidden transition-all ${isSelected ? 'ring-4 ring-indigo-500 shadow-xl scale-[0.98]' : 'hover:shadow-lg'}`}>
-                       <img 
-                            src={mainTab === 'edited' ? (photo.editedUrl || photo.url) : photo.url} 
-                            loading="lazy" 
-                            className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" 
-                            alt="" 
-                       />
-                       
-                       {/* Overlays */}
-                       <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-between p-3">
-                           <div className="flex justify-between items-start">
-                               {photo.isAiPick && (
-                                   <div className="bg-[#10B981] text-white p-1.5 rounded-lg shadow-lg">
-                                       <Sparkles className="w-3 h-3" />
-                                   </div>
-                               )}
-                               {isPhotographer && (
-                                   <button onClick={() => deletePhoto(photo.id)} className="bg-red-500 text-white p-1.5 rounded-lg hover:bg-red-600 transition-colors">
-                                       <Trash2 className="w-3 h-3" />
-                                   </button>
-                               )}
-                           </div>
+       {/* View Content */}
+       {viewMode === 'grid' ? (
+           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 2xl:grid-cols-6 gap-4">
+               {filteredPhotos.map(photo => {
+                   const isSelected = selectedPhotos.has(photo.id);
+                   return (
+                       <div key={photo.id} className={`group relative aspect-[4/5] bg-slate-100 rounded-2xl overflow-hidden transition-all ${isSelected ? 'ring-4 ring-indigo-500 shadow-xl scale-[0.98]' : 'hover:shadow-lg'}`}>
+                           <img 
+                                src={mainTab === 'edited' ? (photo.editedUrl || photo.url) : photo.url} 
+                                loading="lazy" 
+                                className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" 
+                                alt="" 
+                           />
                            
-                           <div className="flex justify-between items-end">
-                               {!isLocked && (
-                                   <button 
-                                        onClick={() => togglePhotoSelection(photo.id)}
-                                        className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${
-                                            isSelected ? 'bg-indigo-600 text-white' : 'bg-white/20 backdrop-blur text-white hover:bg-white hover:text-indigo-600'
-                                        }`}
-                                   >
-                                       <Check className="w-4 h-4" />
-                                   </button>
-                               )}
-                           </div>
-                       </div>
+                           {/* Overlays */}
+                           <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-between p-3">
+                               <div className="flex justify-between items-start">
+                                   {photo.isAiPick && (
+                                       <div className="bg-[#10B981] text-white p-1.5 rounded-lg shadow-lg">
+                                           <Sparkles className="w-3 h-3" />
+                                       </div>
+                                   )}
+                                   {isPhotographer && (
+                                       <button onClick={() => deletePhoto(photo.id)} className="bg-red-500 text-white p-1.5 rounded-lg hover:bg-red-600 transition-colors">
+                                           <Trash2 className="w-3 h-3" />
+                                       </button>
+                                   )}
+                               </div>
+                               
+                               <div className="flex justify-between items-end">
+                                    <button 
+                                        onClick={(e) => handleDownload(e, mainTab === 'edited' ? (photo.editedUrl || photo.url) : photo.url)}
+                                        className="w-8 h-8 rounded-full bg-white/20 backdrop-blur flex items-center justify-center text-white hover:bg-white hover:text-slate-900 transition-all"
+                                        title="Download"
+                                    >
+                                        <Download className="w-4 h-4" />
+                                    </button>
 
-                       {/* Persistent Selection Indicator */}
-                       {isSelected && !isLocked && (
-                           <div className="absolute top-3 right-3 w-6 h-6 bg-indigo-600 rounded-full flex items-center justify-center border-2 border-white shadow-md z-10">
-                               <Check className="w-3 h-3 text-white" />
+                                   {!isLocked && (
+                                       <button 
+                                            onClick={() => togglePhotoSelection(photo.id)}
+                                            className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${
+                                                isSelected ? 'bg-indigo-600 text-white' : 'bg-white/20 backdrop-blur text-white hover:bg-white hover:text-indigo-600'
+                                            }`}
+                                       >
+                                           <Check className="w-4 h-4" />
+                                       </button>
+                                   )}
+                               </div>
                            </div>
-                       )}
-                   </div>
-               );
-           })}
-       </div>
+
+                           {/* Persistent Selection Indicator */}
+                           {isSelected && !isLocked && (
+                               <div className="absolute top-3 right-3 w-6 h-6 bg-indigo-600 rounded-full flex items-center justify-center border-2 border-white shadow-md z-10">
+                                   <Check className="w-3 h-3 text-white" />
+                               </div>
+                           )}
+                       </div>
+                   );
+               })}
+           </div>
+       ) : (
+           <div className="max-w-3xl mx-auto space-y-12">
+               {filteredPhotos.map((photo, index) => {
+                   const isSelected = selectedPhotos.has(photo.id);
+                   return (
+                       <div key={photo.id} className={`bg-white p-4 rounded-[2.5rem] border transition-all ${isSelected ? 'border-indigo-500 ring-4 ring-indigo-500/10' : 'border-slate-100 shadow-sm'}`}>
+                            <div className="relative aspect-[4/3] sm:aspect-[3/2] rounded-[2rem] overflow-hidden mb-4 bg-slate-100">
+                                <img 
+                                    src={mainTab === 'edited' ? (photo.editedUrl || photo.url) : photo.url} 
+                                    loading="lazy" 
+                                    className="w-full h-full object-contain"
+                                    alt="" 
+                                />
+                                {photo.isAiPick && (
+                                    <div className="absolute top-4 left-4 bg-[#10B981] text-white px-3 py-1.5 rounded-full shadow-lg flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider">
+                                        <Sparkles className="w-3 h-3" /> Best Pick
+                                    </div>
+                                )}
+                            </div>
+                            <div className="px-4 pb-2 flex items-center justify-between">
+                                <div className="space-y-1">
+                                    <div className="flex gap-2 items-center">
+                                        {photo.category && <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 bg-slate-50 px-2 py-1 rounded-lg">{photo.category}</span>}
+                                        {photo.people.map(p => (
+                                            <span key={p} className="text-[10px] font-black uppercase tracking-widest text-indigo-500 bg-indigo-50 px-2 py-1 rounded-lg">{p}</span>
+                                        ))}
+                                    </div>
+                                    <p className="text-xs text-slate-400 font-bold">IMG_{photo.id.slice(-6).toUpperCase()}.JPG</p>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                     <button 
+                                        onClick={(e) => handleDownload(e, mainTab === 'edited' ? (photo.editedUrl || photo.url) : photo.url)}
+                                        className="p-3 bg-slate-50 rounded-full hover:bg-slate-100 text-slate-500 transition-colors"
+                                    >
+                                        <Download className="w-5 h-5" />
+                                    </button>
+                                     {!isLocked && (
+                                       <button 
+                                            onClick={() => togglePhotoSelection(photo.id)}
+                                            className={`px-6 py-3 rounded-2xl font-black uppercase tracking-widest text-xs transition-all flex items-center gap-2 ${
+                                                isSelected 
+                                                ? 'bg-indigo-600 text-white shadow-xl shadow-indigo-600/20' 
+                                                : 'bg-slate-900 text-white hover:bg-black shadow-lg'
+                                            }`}
+                                       >
+                                           {isSelected ? <><Check className="w-4 h-4" /> Selected</> : 'Select Photo'}
+                                       </button>
+                                   )}
+                                </div>
+                            </div>
+                       </div>
+                   )
+               })}
+           </div>
+       )}
        
        {filteredPhotos.length === 0 && (
            <div className="py-20 flex flex-col items-center justify-center text-slate-400">

@@ -1,3 +1,4 @@
+
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { User, Event, Photo, SelectionStatus, Service, Portfolio, AddonRequest, UserRole } from '../types';
 
@@ -35,6 +36,7 @@ interface DataContextType {
   updateUserPortfolio: (userId: string, portfolio: Portfolio) => Promise<void>;
   toggleUserStatus: (userId: string) => Promise<void>;
   refreshPhotos: (eventId: string) => Promise<void>;
+  downloadPhoto: (url: string, filename?: string) => void;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -393,6 +395,15 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       await loadPhotos(eventId);
   };
 
+  const downloadPhoto = (url: string, filename?: string) => {
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename || 'downloaded_photo.jpg';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+  };
+
   return (
     <DataContext.Provider value={{
       currentUser, users, events, activeEvent, photos, selectedPhotos, isLoading, setActiveEvent,
@@ -400,7 +411,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       deletePhoto, togglePhotoSelection, submitSelections, renamePersonInEvent,
       uploadAsset, uploadRawPhotos, uploadBulkEditedPhotos, resetDatabase,
       requestAddon, addPhotoComment, updatePhotoReviewStatus, approveAllEdits,
-      updateUserServices, updateUserPortfolio, toggleUserStatus, refreshPhotos
+      updateUserServices, updateUserPortfolio, toggleUserStatus, refreshPhotos, downloadPhoto
     }}>
       {children}
     </DataContext.Provider>

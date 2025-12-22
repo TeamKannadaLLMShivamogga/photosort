@@ -1,0 +1,120 @@
+
+# Studio (Photographer) User Stories & Functional Specifications
+**Actor:** Photographer / Studio Owner
+**Role:** Create events, upload photos, manage client delivery, and customize studio branding.
+
+---
+
+## 1. Studio Dashboard
+
+### US-1.1: Operational Overview
+**As a** Photographer,
+**I want** a dashboard summarizing my active projects, total photos managed, and outstanding payments,
+**So that** I know the health of my photography business.
+*   **Visual Detail (PhotographerDashboard.tsx):**
+    *   **Stats Grid:** Total Events, Active Events, Total Photos, Balance to Collect.
+    *   **Recent Events:** Cards showing the latest 3 active events with progress bars for payment collection.
+
+### US-1.2: Actionable Alerts
+**As a** Photographer,
+**I want** to see visual alerts for pending actions (e.g., "Selection Submitted - Start Editing"),
+**So that** I don't miss client turnovers.
+*   **Visual Detail:** Amber/Red badges on event cards indicating required actions.
+
+---
+
+## 2. Event Management
+
+### US-2.1: Create Event Wizard
+**As a** Photographer,
+**I want** a multi-step wizard to create a new project, setting up the Name, Date, Location, and Cover Image,
+**So that** the project setup is structured and complete.
+*   **Visual Detail (CreateEventModal.tsx):** 
+    *   **Step 1:** Basic Info (Name, Date, Location, Quote).
+    *   **Step 2:** Plan Selection (Basic/Standard/Pro) defining limits.
+    *   **Step 3:** Financials (Coupon codes, Total Contract Value).
+
+### US-2.2: Sub-Event Configuration
+**As a** Photographer,
+**I want** to define multiple sub-events (e.g., Haldi, Sangeet, Wedding) with specific dates and venues,
+**So that** photos are automatically organized by occasion.
+*   **Interaction:** "Add Sub-Event" button adds rows to the configuration list.
+
+### US-2.3: Client Access Management
+**As a** Photographer,
+**I want** to invite clients by Email and Name directly within the event setup or details page,
+**So that** they receive access to the gallery immediately.
+*   **System Behavior:** If the email exists, it links the user. If not, it creates a new "User" account and links it.
+
+---
+
+## 3. Asset Management (The Gallery)
+
+### US-3.1: Bulk Raw Upload
+**As a** Photographer,
+**I want** to upload thousands of raw/proof images at once,
+**So that** the system can process them for the client.
+*   **Visual Detail:** A "Upload Raw" button in the Event Gallery.
+*   **Behavior:** Photos are uploaded, and a background process triggers AI tagging and face detection.
+
+### US-3.2: Upload Finished Edits
+**As a** Photographer,
+**I want** to upload edited JPEGs corresponding to the client's selection,
+**So that** I can deliver the final product.
+*   **Visual Detail:** A "Upload Edits" button.
+*   **Logic:** The system matches edits to originals (via filename or ID) to replace the view for the client in the "Edited" tab.
+
+### US-3.3: Photo Organization & Cleanup
+**As a** Photographer,
+**I want** to delete bad shots or manually edit AI tags/people names,
+**So that** the gallery looks professional before the client sees it.
+*   **Visual Detail:** Trash icon on photo hover. Edit icon next to Person names in filters to rename "Unknown" to "Uncle Bob".
+
+---
+
+## 4. Workflow Control
+
+### US-4.1: Workflow Status Management
+**As a** Photographer,
+**I want** to manually advance the project status (Open -> Submitted -> Editing -> Review -> Accepted),
+**So that** I can control when the client can select photos or when they see the final edits.
+*   **Visual Detail:** A "Status" button in the gallery header opening a modal to update the stage and set delivery estimates.
+*   **Behavior:**
+    *   **Lock Selection:** Changing status from "Open" prevents clients from changing selections.
+    *   **Release Edits:** Changing status to "Review" unlocks the "Edited" tab for clients.
+
+---
+
+## 5. Studio Portfolio & Branding
+
+### US-5.1: Profile Customization
+**As a** Photographer,
+**I want** to upload my studio logo (avatar), write a bio, and set my display name,
+**So that** clients recognize my brand when they log in.
+*   **Visual Detail (Portfolio.tsx):** Editable fields for Bio, Avatar upload, and Name.
+
+### US-5.2: Portfolio Showcase
+**As a** Photographer,
+**I want** to upload sample gallery images and YouTube video links,
+**So that** potential clients (or current ones) can see my best work.
+*   **Visual Detail:** A grid of sample images and a carousel of YouTube video thumbnails.
+
+### US-5.3: Service Menu Management
+**As a** Photographer,
+**I want** to define my service packages (e.g., "Wedding Film", "Candid Photography") and Add-ons (e.g., "Extra Album"),
+**So that** clients can view what's included and request upgrades.
+*   **Visual Detail:** A list of services with Name, Price, and Type (Service/Add-on). Ability to Add/Edit/Delete items.
+
+---
+
+## 6. Financials (Future Scope)
+
+### US-6.1: Payment Recording
+**As a** Photographer,
+**I want** to manually record offline payments (Cash/Transfer) received from the client,
+**So that** the "Balance Due" on the dashboard updates accurately.
+
+### US-6.2: Invoice Generation
+**As a** Photographer,
+**I want** to generate a PDF invoice based on the event quote and selected add-ons,
+**So that** I can send it to the client for payment.

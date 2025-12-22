@@ -14,6 +14,7 @@ const UserSelections: React.FC = () => {
   
   const isLocked = activeEvent?.selectionStatus !== 'open';
   const isReviewMode = activeEvent?.selectionStatus === 'review' || activeEvent?.selectionStatus === 'accepted';
+  const isAccepted = activeEvent?.selectionStatus === 'accepted';
 
   // Helper for timeline
   const getTimelineStatus = () => {
@@ -27,6 +28,10 @@ const UserSelections: React.FC = () => {
       if (confirm("Are you sure you want to submit your selections for editing? This will lock your current selection.")) {
           await submitSelections();
       }
+  };
+
+  const handleBulkDownload = () => {
+      alert("Downloading High-Res ZIP... (Simulation)");
   };
 
   return (
@@ -159,18 +164,29 @@ const UserSelections: React.FC = () => {
                   <p className="text-slate-500 font-medium text-sm mt-1">Review the edited photos. Approve them to finalize the project.</p>
                 </div>
                 
-                {editedPhotos.length > 0 && activeEvent?.selectionStatus !== 'accepted' && (
-                  <button 
-                    onClick={() => {
-                        if (confirm("Are you sure you want to approve all photos? This will complete the project.")) {
-                            approveAllEdits(activeEvent?.id || '');
-                        }
-                    }}
-                    className="px-8 py-3.5 bg-indigo-600 text-white font-bold rounded-2xl shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 transition-all flex items-center gap-2 active:scale-95"
-                  >
-                    <CheckCircle2 className="w-4 h-4" /> Approve All
-                  </button>
-                )}
+                <div className="flex items-center gap-3">
+                    {isAccepted && (
+                        <button 
+                            onClick={handleBulkDownload}
+                            className="px-8 py-3.5 bg-slate-900 text-white font-bold rounded-2xl shadow-xl hover:bg-black transition-all flex items-center gap-2 active:scale-95"
+                        >
+                            <Download className="w-4 h-4" /> Download All (ZIP)
+                        </button>
+                    )}
+
+                    {editedPhotos.length > 0 && activeEvent?.selectionStatus !== 'accepted' && (
+                    <button 
+                        onClick={() => {
+                            if (confirm("Are you sure you want to approve all photos? This will complete the project.")) {
+                                approveAllEdits(activeEvent?.id || '');
+                            }
+                        }}
+                        className="px-8 py-3.5 bg-indigo-600 text-white font-bold rounded-2xl shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 transition-all flex items-center gap-2 active:scale-95"
+                    >
+                        <CheckCircle2 className="w-4 h-4" /> Approve All
+                    </button>
+                    )}
+                </div>
               </div>
 
               {editedPhotos.length > 0 ? (
