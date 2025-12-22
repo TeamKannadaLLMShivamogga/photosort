@@ -34,17 +34,38 @@ const PhotographerPortfolio: React.FC<PortfolioProps> = ({ targetUserId, readOnl
   const galleryInputRef = useRef<HTMLInputElement>(null);
   const avatarInputRef = useRef<HTMLInputElement>(null);
   
+  // State tracking for preservation
+  const lastLoadedId = useRef<string | null>(null);
+  
   // New Service State
   const [newService, setNewService] = useState({ name: '', price: 0, description: '', type: 'service' as ServiceType });
 
+  // Sync services (live data)
   useEffect(() => {
     if (displayUser) {
-      setBio(displayUser.portfolio?.bio || '');
-      setVideoLinks(displayUser.portfolio?.videoLinks || []);
-      setGalleryImages(displayUser.portfolio?.galleryImages || []);
       setServices(displayUser.services || []);
     }
   }, [displayUser]);
+
+  // Sync Draft Fields (Bio, Gallery, Videos)
+  useEffect(() => {
+    if (!displayUser) return;
+
+    // If read-only, always sync with backend data
+    if (readOnly) {
+        setBio(displayUser.portfolio?.bio || '');
+        setVideoLinks(displayUser.portfolio?.videoLinks || []);
+        setGalleryImages(displayUser.portfolio?.galleryImages || []);
+    } else {
+        // If editing, only initialize when switching users to preserve unsaved drafts
+        if (lastLoadedId.current !== displayUser.id) {
+            setBio(displayUser.portfolio?.bio || '');
+            setVideoLinks(displayUser.portfolio?.videoLinks || []);
+            setGalleryImages(displayUser.portfolio?.galleryImages || []);
+            lastLoadedId.current = displayUser.id;
+        }
+    }
+  }, [displayUser, readOnly]);
 
   const handleSavePortfolio = () => {
     if (!displayUser || readOnly) return;
@@ -87,16 +108,19 @@ const PhotographerPortfolio: React.FC<PortfolioProps> = ({ targetUserId, readOnl
 
   // --- Image Logic ---
   const handleGalleryUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
+    if (e.target.files && e.target.files.length > 0) {
         setIsUploading(true);
         try {
-            const url = await uploadAsset(e.target.files[0]);
-            setGalleryImages([...galleryImages, url]);
+            const files = Array.from(e.target.files);
+            const uploadPromises = files.map(file => uploadAsset(file));
+            const urls = await Promise.all(uploadPromises);
+            setGalleryImages(prev => [...prev, ...urls]);
         } catch (error) {
             console.error("Upload failed", error);
-            alert("Failed to upload image");
+            alert("Failed to upload one or more images");
         } finally {
             setIsUploading(false);
+            if (galleryInputRef.current) galleryInputRef.current.value = '';
         }
     }
   };
@@ -194,7 +218,7 @@ const PhotographerPortfolio: React.FC<PortfolioProps> = ({ targetUserId, readOnl
         {!readOnly && (
           <button 
             onClick={handleSavePortfolio}
-            className="bg-[#10B981] text-white px-6 py-3 rounded-2xl font-bold flex items-center gap-2 hover:bg-[#059669] transition-colors shadow-xl"
+            className="bg-[#10B981] text-white px-6 py-3 rounded-2xl font-bold flex items-center gap-2 hover:bg-[#059669] transition-colors shadow-xl active:scale-95"
           >
             <Save className="w-4 h-4" /> Save Changes
           </button>
@@ -345,7 +369,7 @@ const PhotographerPortfolio: React.FC<PortfolioProps> = ({ targetUserId, readOnl
                         >
                             {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <UploadCloud className="w-4 h-4" />} Upload Photos
                         </button>
-                        <input type="file" ref={galleryInputRef} className="hidden" accept="image/*" onChange={handleGalleryUpload} />
+                        <input type="file" ref={galleryInputRef} className="hidden" accept="image/*" multiple onChange={handleGalleryUpload} />
                     </>
                 ) : (
                     galleryImages.length > 0 && (

@@ -1,217 +1,40 @@
-
-import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { 
-  Settings, Upload, Image as ImageIcon, CheckSquare, 
-  Share2, X, Clock, Download, FileJson, Calendar, ChevronLeft, Loader2,
-  Edit2, Zap, ShieldCheck, FileType, Sparkles, Wand2, CreditCard, ChevronDown, FolderOpen,
-  Database, Activity, Plus, Users, Trash2, GitPullRequest, Lock, Unlock, Send, MessageCircle, AlertCircle, CheckCircle, UploadCloud, ChevronRight, AlertTriangle, Gift, Check, XCircle, MapPin, UserMinus, Timer, User as UserIcon
-} from 'lucide-react';
+import React, { useState, useRef } from 'react';
 import { useData } from '../../context/DataContext';
-import GalleryView from '../../components/Gallery/GalleryView';
-import { SubEvent, Event, OptimizationType, Photo, UserRole, SelectionStatus } from '../../types';
-import { optimizeImage } from '../../utils/imageOptimizer';
+import { ArrowLeft, Upload, Users, Calendar, Settings, Image as ImageIcon, CheckCircle, Clock, AlertTriangle, ChevronRight, Lock, Unlock, RefreshCw } from 'lucide-react';
+import { SelectionStatus } from '../../types';
 
-// CHANGED: Relative API URL to use Vite Proxy
-const API_URL = '/api';
+interface EventDetailProps {
+  onNavigate: (view: string) => void;
+  initialTab?: string;
+}
 
-const PhotographerEventDetail: React.FC<{ onNavigate: (view: string) => void, initialTab?: string }> = ({ onNavigate, initialTab }) => {
-  const { 
-    activeEvent, updateEvent, photos, users, setActiveEvent, refreshPhotos, 
-    recordPayment, assignUserToEvent, removeUserFromEvent, addSubEvent, updateEventWorkflow,
-    uploadEditedPhoto, uploadBulkEditedPhotos, addPhotoComment, resolveComment, updateAddonStatus
-  } = useData();
-  
-  const [activeTab, setActiveTab] = useState<string>(initialTab || 'settings');
-  
-  const [isEditDetailsOpen, setIsEditDetailsOpen] = useState(false);
-  const [isAddClientModalOpen, setIsAddClientModalOpen] = useState(false);
-  const [editForm, setEditForm] = useState<Partial<Event>>({});
-  const [newClientForm, setNewClientForm] = useState({ name: '', email: '', phone: '' });
-  
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const editUploadRef = useRef<HTMLInputElement>(null);
-  const bulkEditUploadRef = useRef<HTMLInputElement>(null);
-  const [activePhotoForEdit, setActivePhotoForEdit] = useState<string | null>(null);
-  const [activePhotoForComments, setActivePhotoForComments] = useState<string | null>(null);
-
-  // Payment State
-  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
-  const [paymentAmount, setPaymentAmount] = useState<string>('');
-  const [paymentDate, setPaymentDate] = useState<string>(new Date().toISOString().split('T')[0]);
-
-  // Upload State (Raw)
-  const [selectedSubEvent, setSelectedSubEvent] = useState<string>('');
-  const [isRawUploadModalOpen, setIsRawUploadModalOpen] = useState(false);
-  const [isSubEventModalOpen, setIsSubEventModalOpen] = useState(false);
-  const [newSubEvent, setNewSubEvent] = useState({ name: '', date: '', endDate: '' });
-
-  // Optimization State
-  const [useOptimization, setUseOptimization] = useState(true);
-  const [optLevel, setOptLevel] = useState<OptimizationType>(activeEvent?.optimizationSetting || 'balanced');
-
-  // Upload Feedback States
+const PhotographerEventDetail: React.FC<EventDetailProps> = ({ onNavigate, initialTab = 'overview' }) => {
+  const { activeEvent, photos, updateEventWorkflow, updateEvent, uploadBulkEditedPhotos, setActiveEvent } = useData();
+  const [activeTab, setActiveTab] = useState(initialTab);
   const [isUploading, setIsUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
-  const [uploadStage, setUploadStage] = useState<'analyzing' | 'optimizing' | 'uploading' | 'indexing'>('analyzing');
-  const [currentFileName, setCurrentFileName] = useState('');
-  const [stats, setStats] = useState({ savedSize: 0, processedCount: 0, totalCount: 0 });
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Workflow State
-  const [deliveryDate, setDeliveryDate] = useState('');
+  if (!activeEvent) return <div className="p-10 text-center">Event not found</div>;
 
-  useEffect(() => {
-    if (activeEvent) {
-      setEditForm(activeEvent);
-      setOptLevel(activeEvent.optimizationSetting || 'balanced');
-      if (activeEvent.subEvents.length > 0) {
-          setSelectedSubEvent(activeEvent.subEvents[0].id);
-      }
-    }
-  }, [activeEvent]);
-
-  if (!activeEvent) return null;
-
-  const handleUpdateDetails = () => {
-    if (activeEvent && editForm.name) {
-      updateEvent({ ...activeEvent, ...editForm } as Event);
-      setIsEditDetailsOpen(false);
-    }
-  };
-
-  const handleAddClient = async () => {
-    if (newClientForm.name && newClientForm.email) {
-      await assignUserToEvent(activeEvent.id, newClientForm);
-      setNewClientForm({ name: '', email: '', phone: '' });
-      setIsAddClientModalOpen(false);
-    }
-  };
-
-  const handleRemoveClient = async (userId: string) => {
-    if (confirm("Revoke access for this user?")) {
-        await removeUserFromEvent(activeEvent.id, userId);
-    }
-  };
-
-  const handleRecordPayment = async () => {
-      const amount = parseFloat(paymentAmount);
-      if (amount > 0) {
-          await recordPayment(activeEvent.id, amount, paymentDate);
-          setIsPaymentModalOpen(false);
-          setPaymentAmount('');
-          setPaymentDate(new Date().toISOString().split('T')[0]);
-      }
-  };
-
-  const handleCreateSubEvent = async () => {
-      if(newSubEvent.name && newSubEvent.date) {
-          await addSubEvent(activeEvent.id, {
-              id: '',
-              ...newSubEvent
-          });
-          setIsSubEventModalOpen(false);
-          setNewSubEvent({ name: '', date: '', endDate: '' });
-      }
-  };
-
-  const handleWorkflowChange = async (status: SelectionStatus) => {
-      await updateEventWorkflow(activeEvent.id, status, deliveryDate || undefined);
-  };
-
-  const handleEditUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (file && activePhotoForEdit) {
-          await uploadEditedPhoto(activePhotoForEdit, file);
-          setActivePhotoForEdit(null);
-      }
-  };
-
-  const handleBulkEditUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-      if (e.target.files && e.target.files.length > 0) {
-          setIsUploading(true);
-          setUploadStage('uploading');
-          setUploadProgress(10);
-          await uploadBulkEditedPhotos(activeEvent.id, e.target.files);
-          setUploadProgress(100);
-          setTimeout(() => setIsUploading(false), 1000);
-      }
-  };
-
-  const tabs = [
-    { id: 'settings', label: 'Settings', icon: Settings },
-    { id: 'workflow', label: 'Workflow', icon: GitPullRequest },
-    { id: 'sorted', label: 'Gallery', icon: ImageIcon },
-    { id: 'selections', label: 'Selections', icon: CheckSquare },
-  ];
+  const eventPhotos = photos.filter(p => p.eventId === activeEvent.id);
+  const selectedPhotos = eventPhotos.filter(p => p.isSelected);
+  const approvedCount = eventPhotos.filter(p => p.reviewStatus === 'approved').length;
+  const changesRequestedCount = eventPhotos.filter(p => p.reviewStatus === 'changes_requested').length;
+  
+  const totalPaid = activeEvent.paidAmount || 0;
+  const balance = (activeEvent.price || 0) - totalPaid;
 
   const handleRealUpload = async (files: FileList) => {
-    if (!selectedSubEvent) {
-        alert("Please select a sub-event first.");
-        return;
-    }
-
     setIsUploading(true);
-    setUploadProgress(0);
-    setStats({ savedSize: 0, processedCount: 0, totalCount: 0 });
-    
-    const fileArray = Array.from(files).filter(f => f.type.startsWith('image/'));
-    const totalFiles = fileArray.length;
-    
-    if (totalFiles === 0) {
-        setIsUploading(false);
-        return;
-    }
-    
-    setStats(s => ({ ...s, totalCount: totalFiles }));
-
-    const formData = new FormData();
-    formData.append('subEventId', selectedSubEvent); 
-
-    setUploadStage('optimizing');
-    let totalSavedBytes = 0;
-
-    for (let i = 0; i < fileArray.length; i++) {
-        const file = fileArray[i];
-        setCurrentFileName(file.name);
-        
-        if (useOptimization) {
-           formData.append('files', file); 
-           await new Promise(r => setTimeout(r, 20)); 
-        } else {
-           formData.append('files', file);
-        }
-        
-        setStats(s => ({ ...s, processedCount: i + 1, savedSize: totalSavedBytes }));
-        setUploadProgress(Math.round(((i + 1) / totalFiles) * 50)); 
-    }
-
-    setUploadStage('uploading');
-    setCurrentFileName('Sending data to server...');
-    
     try {
-        const response = await fetch(`${API_URL}/events/${activeEvent.id}/photos`, {
-            method: 'POST',
-            body: formData, 
-        });
-
-        if (!response.ok) throw new Error("Upload failed");
-        
-        setUploadProgress(80);
-        setUploadStage('indexing');
-        setCurrentFileName('Waiting for AI Analysis...');
-        await new Promise(r => setTimeout(r, 1500));
-        setUploadProgress(100);
-        
-        await refreshPhotos();
-        
-        setIsUploading(false);
-        setUploadProgress(0);
-        setCurrentFileName('');
-        setIsRawUploadModalOpen(false); // Close modal on success
-
+        // We use the context function which handles bulk upload
+        await uploadBulkEditedPhotos(activeEvent.id, files);
+        alert("Upload complete!");
     } catch (e) {
-        console.error("Upload error", e);
+        console.error(e);
+        alert("Upload failed.");
+    } finally {
         setIsUploading(false);
-        alert("Upload failed. Please check connection.");
     }
   };
 
@@ -225,634 +48,201 @@ const PhotographerEventDetail: React.FC<{ onNavigate: (view: string) => void, in
     fileInputRef.current?.click();
   };
 
-  const totalPaid = (activeEvent as any).paidAmount || (activeEvent.price || 0) / 2;
-  const balance = (activeEvent.price || 0) - totalPaid;
-
-  const selectedPhotos = photos.filter(p => p.eventId === activeEvent.id && (p.isSelected || p.reviewStatus !== 'pending'));
-  const approvedCount = selectedPhotos.filter(p => p.reviewStatus === 'approved').length;
-  const reworkCount = selectedPhotos.filter(p => p.reviewStatus === 'changes_requested').length;
-
-  const getStatusColor = (status: string) => {
-      switch(status) {
-          case 'open': return 'bg-blue-50 text-blue-700 border-blue-100 ring-4 ring-blue-50/50';
-          case 'submitted': return 'bg-amber-50 text-amber-700 border-amber-100 ring-4 ring-amber-50/50';
-          case 'editing': return 'bg-purple-50 text-purple-700 border-purple-100 ring-4 ring-purple-50/50';
-          case 'review': return 'bg-orange-50 text-orange-700 border-orange-100 ring-4 ring-orange-50/50';
-          case 'accepted': return 'bg-emerald-50 text-emerald-700 border-emerald-100 ring-4 ring-emerald-50/50';
-          default: return 'bg-slate-50 text-slate-700 border-slate-100';
+  const advanceWorkflow = (status: SelectionStatus) => {
+      if (confirm(`Advance workflow status to ${status}?`)) {
+          updateEventWorkflow(activeEvent.id, status);
       }
   };
-
-  const getPendingAction = (status: string) => {
-      switch(status) {
-          case 'submitted': return 'Start Editing';
-          case 'editing': return 'Upload Edits';
-          case 'review': return 'Waiting Approval';
-          default: return null;
-      }
-  };
-
-  // Countdown Helper
-  const getDaysRemaining = (dateStr?: string) => {
-      if (!dateStr) return null;
-      const target = new Date(dateStr);
-      const today = new Date();
-      const diff = target.getTime() - today.getTime();
-      return Math.ceil(diff / (1000 * 3600 * 24));
-  };
-
-  const pendingAction = getPendingAction(activeEvent.selectionStatus);
-  const pendingAddons = activeEvent.addonRequests?.filter(r => r.status === 'pending') || [];
-  const daysRemaining = getDaysRemaining(activeEvent.timeline?.deliveryEstimate);
-  
-  // Resolve assigned users
-  const assignedClientUsers = users.filter(u => activeEvent.assignedUsers?.includes(u.id));
 
   return (
-    <div className="flex flex-col h-full bg-slate-50 -m-8 animate-in fade-in duration-500 relative">
-      {/* Header */}
-      <div className="bg-white px-8 py-4 border-b border-slate-100 space-y-4 shadow-sm z-20 relative">
-        <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
-          <div className="flex items-start gap-4">
-            <button 
-                onClick={() => { setActiveEvent(null); onNavigate('events'); }}
-                className="mt-1 p-2 hover:bg-slate-50 rounded-lg text-slate-400 transition-colors"
-            >
-                <ChevronLeft className="w-5 h-5" />
-            </button>
-            <div className="flex gap-4">
-                <div className="w-16 h-16 rounded-2xl overflow-hidden shadow-md border-2 border-slate-50 shrink-0">
-                    <img src={activeEvent.coverImage} className="w-full h-full object-cover" alt="" />
-                </div>
-                <div>
-                    <h1 className="text-xl font-black text-slate-900 leading-tight tracking-tight">{activeEvent.name}</h1>
-                    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mt-2">
-                        <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-500 uppercase tracking-widest">
-                            <Calendar className="w-3.5 h-3.5 text-indigo-500" />
-                            <span>
-                                {new Date(activeEvent.date).toLocaleDateString()}
-                                {activeEvent.endDate ? ` - ${new Date(activeEvent.endDate).toLocaleDateString()}` : ''}
-                            </span>
-                        </div>
-                        {activeEvent.location && (
-                            <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-500 uppercase tracking-widest">
-                                <MapPin className="w-3.5 h-3.5 text-rose-500" />
-                                <span>{activeEvent.location}</span>
-                            </div>
-                        )}
-                        <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-500 uppercase tracking-widest">
-                            <ImageIcon className="w-3.5 h-3.5 text-emerald-500" />
-                            {/* Dynamic Photo Count */}
-                            <span>{photos?.length || activeEvent.photoCount || 0} Photos</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-          </div>
-          
-          {/* Status Card with Countdown */}
-          <div className={`hidden md:flex items-center gap-4 px-5 py-2.5 rounded-2xl border transition-all ${getStatusColor(activeEvent.selectionStatus)} shadow-sm`}>
-             <div className="flex flex-col">
-                 <div className="flex items-center gap-2">
-                    <div className="relative">
-                        <div className="w-2 h-2 bg-current rounded-full animate-ping absolute opacity-75"></div>
-                        <div className="w-2 h-2 bg-current rounded-full relative"></div>
-                    </div>
-                    <span className="text-[10px] font-black uppercase tracking-widest leading-none">{activeEvent.selectionStatus}</span>
-                 </div>
-                 <div className="flex flex-col mt-1">
-                    {pendingAction && (
-                        <div className="flex items-center gap-1 text-[9px] font-bold opacity-80">
-                            <AlertTriangle className="w-3 h-3" />
-                            <span>Action: {pendingAction}</span>
-                        </div>
-                    )}
-                    {daysRemaining !== null && (
-                        <div className={`flex items-center gap-1 text-[9px] font-bold mt-0.5 ${daysRemaining < 0 ? 'text-red-600' : 'opacity-80'}`}>
-                            <Timer className="w-3 h-3" />
-                            <span>{daysRemaining < 0 ? `${Math.abs(daysRemaining)} Days Overdue` : `${daysRemaining} Days Left`}</span>
-                        </div>
-                    )}
-                 </div>
-             </div>
-             {activeEvent.timeline?.deliveryEstimate && (
-                 <div className="text-right border-l border-current/20 pl-4">
-                     <p className="text-[8px] font-bold opacity-60 uppercase tracking-widest">Deadline</p>
-                     <p className="text-[10px] font-bold">{new Date(activeEvent.timeline.deliveryEstimate).toLocaleDateString()}</p>
-                 </div>
-             )}
-          </div>
-        </div>
+    <div className="space-y-6 animate-in fade-in duration-500 pb-20 max-w-7xl mx-auto">
+      <button onClick={() => onNavigate('events')} className="flex items-center gap-2 text-slate-400 hover:text-slate-600 font-bold uppercase tracking-widest text-[10px]">
+        <ArrowLeft className="w-3 h-3" /> Back to Events
+      </button>
 
-        <div className="flex gap-1 bg-slate-50 p-1 rounded-xl w-fit">
-          {tabs.map(tab => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-[11px] font-bold transition-all duration-300 ${
-                activeTab === tab.id 
-                  ? 'bg-white text-[#10B981] shadow-sm' 
-                  : 'text-slate-400 hover:text-slate-800'
-              }`}
-            >
-              <tab.icon className={`w-3.5 h-3.5 ${activeTab === tab.id ? 'text-[#10B981]' : ''}`} />
-              {tab.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="flex-1 overflow-y-auto p-4 no-scrollbar">
-        {/* SETTINGS TAB */}
-        {activeTab === 'settings' && (
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start max-w-7xl mx-auto">
-            {/* ADD-ON REQUESTS SECTION */}
-            {pendingAddons.length > 0 && (
-                <div className="lg:col-span-12 bg-white p-6 rounded-[2rem] border-2 border-amber-100 shadow-sm space-y-4">
-                    <div className="flex items-center gap-2 text-amber-600">
-                        <Gift className="w-5 h-5" />
-                        <h3 className="font-bold uppercase tracking-tight text-sm">Pending Add-on Requests</h3>
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-                        {pendingAddons.map(req => {
-                            // Helper to find service details (would normally use a map/lookup)
-                            const photographer = users.find(u => u.id === activeEvent.photographerId);
-                            const service = photographer?.services?.find(s => s.id === req.serviceId);
-                            return (
-                                <div key={req.id} className="p-4 bg-amber-50/50 rounded-xl border border-amber-100 flex justify-between items-center">
-                                    <div>
-                                        <p className="font-bold text-sm text-slate-800">{service?.name || 'Unknown Service'}</p>
-                                        <p className="text-[10px] text-slate-500">{new Date(req.date).toLocaleDateString()}</p>
-                                    </div>
-                                    <div className="flex gap-2">
-                                        <button onClick={() => updateAddonStatus(activeEvent.id, req.id, 'approved')} className="p-2 bg-white text-green-600 rounded-lg shadow-sm hover:bg-green-50"><Check className="w-4 h-4" /></button>
-                                        <button onClick={() => updateAddonStatus(activeEvent.id, req.id, 'rejected')} className="p-2 bg-white text-red-500 rounded-lg shadow-sm hover:bg-red-50"><X className="w-4 h-4" /></button>
-                                    </div>
-                                </div>
-                            );
-                        })}
-                    </div>
-                </div>
-            )}
-
-            {/* Existing Settings Layout */}
-            <div className="lg:col-span-8 space-y-4">
-              <div className="bg-white p-8 rounded-[2rem] border border-slate-100 shadow-sm space-y-8">
-                <div className="flex items-center justify-between border-b border-slate-50 pb-5">
-                  <div className="flex items-center gap-4">
-                    <div className="w-10 h-10 bg-emerald-50 rounded-2xl flex items-center justify-center text-[#10B981]">
-                      <Calendar className="w-5 h-5" />
-                    </div>
-                    <h3 className="text-lg font-black text-slate-900 uppercase tracking-tight">Project Summary</h3>
-                  </div>
-                  <button onClick={() => setIsEditDetailsOpen(true)} className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-indigo-600 bg-indigo-50 px-4 py-2 rounded-xl hover:bg-indigo-100 transition-all">
-                    <Edit2 className="w-3.5 h-3.5" /> Modify Details
-                  </button>
-                </div>
-                
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-8">
-                  <div className="space-y-1">
-                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em]">Project Name</p>
-                    <p className="text-sm font-bold text-slate-800">{activeEvent.name}</p>
-                  </div>
-                  <div className="space-y-1">
-                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em]">Main Date</p>
-                    <p className="text-sm font-bold text-slate-800">{new Date(activeEvent.date).toLocaleDateString()}</p>
-                  </div>
-                  <div className="space-y-1">
-                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em]">Deliverables</p>
-                    <p className="text-sm font-bold text-slate-800">{activeEvent.photoCount} High-Res Frames</p>
-                  </div>
-                </div>
-
-                <div className="pt-8 border-t border-slate-50">
-                  <div className="flex items-center justify-between mb-4">
-                      <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Authorized Clients</h4>
-                      <button onClick={() => setIsAddClientModalOpen(true)} className="flex items-center gap-1 text-[10px] font-black uppercase tracking-widest text-[#10B981] bg-emerald-50 px-3 py-1.5 rounded-lg hover:bg-emerald-100 transition-all">
-                          <Plus className="w-3 h-3" /> Add Client
-                      </button>
-                  </div>
-                  <div className="space-y-3">
-                      {assignedClientUsers.map(user => (
-                          <div key={user.id} className="p-3 bg-slate-50 rounded-2xl border border-slate-100 flex items-center justify-between">
-                              <div className="flex items-center gap-3">
-                                  <img src={user.avatar || `https://ui-avatars.com/api/?name=${user.name}`} className="w-8 h-8 rounded-full border border-white shadow-sm" alt="" />
-                                  <div>
-                                      <p className="text-xs font-bold text-slate-900">{user.name}</p>
-                                      <p className="text-[9px] text-slate-500 font-medium">{user.email}</p>
-                                  </div>
-                              </div>
-                              <button onClick={() => handleRemoveClient(user.id)} className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all" title="Revoke Access">
-                                  <UserMinus className="w-4 h-4" />
-                              </button>
-                          </div>
-                      ))}
-                      {assignedClientUsers.length === 0 && <p className="text-center text-slate-400 text-xs py-2 italic">No clients assigned yet.</p>}
-                  </div>
-                </div>
-
-                <div className="pt-8 border-t border-slate-50">
-                  <div className="flex items-center justify-between mb-4">
-                      <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Event Timeline / Sub-Events</h4>
-                      <button onClick={() => setIsSubEventModalOpen(true)} className="flex items-center gap-1 text-[10px] font-black uppercase tracking-widest text-[#10B981] bg-emerald-50 px-3 py-1.5 rounded-lg hover:bg-emerald-100 transition-all">
-                          <Plus className="w-3 h-3" /> Add Sub-Event
-                      </button>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {activeEvent.subEvents.map(se => (
-                      <div key={se.id} className="p-4 bg-slate-50 rounded-2xl border border-slate-100 flex items-center justify-between group">
-                        <div className="flex items-center gap-3">
-                          <Clock className="w-4 h-4 text-indigo-400" />
-                          <div>
-                            <p className="font-bold text-slate-900 text-xs">{se.name}</p>
-                            <p className="text-[9px] text-slate-400 font-bold uppercase">
-                                {new Date(se.date).toLocaleDateString()}
-                                {se.endDate ? ` - ${new Date(se.endDate).toLocaleDateString()}` : ''}
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                
-                {/* Active Services List */}
-                <div className="pt-8 border-t border-slate-50">
-                    <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-4">Active Services</h4>
-                    <div className="flex flex-wrap gap-2">
-                        {activeEvent.selectedServices.map(s => (
-                            <span key={s.id} className="px-3 py-1.5 bg-indigo-50 text-indigo-700 rounded-lg text-xs font-bold border border-indigo-100">
-                                {s.name}
-                            </span>
-                        ))}
-                    </div>
-                </div>
+      <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm flex flex-col md:flex-row justify-between gap-6">
+        <div className="flex items-center gap-6">
+           <img src={activeEvent.coverImage} className="w-24 h-24 rounded-[2rem] object-cover shadow-lg" alt="" />
+           <div>
+              <h1 className="text-2xl font-black text-slate-900 uppercase tracking-tight">{activeEvent.name}</h1>
+              <div className="flex items-center gap-4 mt-2 text-xs font-bold text-slate-500">
+                  <span className="flex items-center gap-1 bg-slate-50 px-3 py-1 rounded-lg border border-slate-100">
+                      <Calendar className="w-3 h-3" /> {new Date(activeEvent.date).toLocaleDateString()}
+                  </span>
+                  <span className={`flex items-center gap-1 px-3 py-1 rounded-lg border ${
+                      activeEvent.status === 'active' ? 'bg-green-50 text-green-700 border-green-100' : 'bg-slate-50 border-slate-100'
+                  }`}>
+                      <div className={`w-2 h-2 rounded-full ${activeEvent.status === 'active' ? 'bg-green-500' : 'bg-slate-400'}`} />
+                      {activeEvent.status.toUpperCase()}
+                  </span>
               </div>
-            </div>
-
-            <div className="lg:col-span-4 space-y-4">
-              <div className="bg-slate-900 p-8 rounded-[2.5rem] shadow-xl text-white space-y-8">
-                <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                      <div className="w-10 h-10 bg-[#10B981] rounded-2xl flex items-center justify-center">
-                        <CreditCard className="w-5 h-5 text-white" />
-                      </div>
-                      <h3 className="text-lg font-black uppercase tracking-tight">Financials</h3>
-                    </div>
-                    <button onClick={() => setIsPaymentModalOpen(true)} className="bg-white/10 hover:bg-white/20 p-2 rounded-xl transition-colors">
-                        <Plus className="w-5 h-5 text-white" />
-                    </button>
-                </div>
-                <div className="space-y-6">
-                   <div className="space-y-1">
-                      <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">Total Valuation</p>
-                      <p className="text-3xl font-black">₹{activeEvent.price?.toLocaleString()}</p>
-                   </div>
-                   <div className="grid grid-cols-2 gap-4 pt-4 border-t border-slate-800">
-                      <div>
-                        <p className="text-[8px] font-bold text-slate-500 uppercase">Received</p>
-                        <p className="text-lg font-bold text-[#10B981]">₹{totalPaid.toLocaleString()}</p>
-                      </div>
-                      <div>
-                        <p className="text-[8px] font-bold text-slate-500 uppercase">Balance</p>
-                        <p className="text-lg font-bold text-amber-500">₹{balance.toLocaleString()}</p>
-                      </div>
-                   </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* WORKFLOW TAB */}
-        {activeTab === 'workflow' && (
-            <div className="max-w-5xl mx-auto space-y-8">
-                {/* ... Workflow UI code kept same ... */}
-                {/* For brevity, repeating standard workflow block logic from previous step, ensuring context preservation */}
-                <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm space-y-8">
-                    <div className="flex justify-between items-center">
-                        <div>
-                            <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tight">Production Workflow</h3>
-                            <p className="text-xs text-slate-500 font-bold mt-1 uppercase tracking-widest">Current Stage: {activeEvent.selectionStatus}</p>
-                        </div>
-                    </div>
-                    <div className="relative pt-6 pb-2">
-                        <div className="absolute top-1/2 left-0 right-0 h-1 bg-slate-100 -translate-y-1/2 z-0" />
-                        <div className="relative z-10 flex justify-between">
-                            {['open', 'submitted', 'editing', 'review', 'accepted'].map((step, idx) => {
-                                const currentIdx = ['open', 'submitted', 'editing', 'review', 'accepted'].indexOf(activeEvent.selectionStatus);
-                                const isCompleted = idx <= currentIdx;
-                                return (
-                                    <div key={step} className="flex flex-col items-center gap-2">
-                                        <div className={`w-8 h-8 rounded-full flex items-center justify-center border-4 transition-all ${
-                                            isCompleted ? 'bg-[#10B981] border-[#10B981] text-white' : 'bg-white border-slate-200 text-slate-300'
-                                        }`}>
-                                            {isCompleted && <CheckSquare className="w-4 h-4" />}
-                                        </div>
-                                        <span className={`text-[10px] font-black uppercase tracking-widest ${isCompleted ? 'text-slate-900' : 'text-slate-300'}`}>
-                                            {step}
-                                        </span>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    </div>
-                    {/* ... Action buttons block logic ... */}
-                    <div className="p-6 bg-slate-50 rounded-3xl border border-slate-200 space-y-4">
-                        {/* Logic based on status */}
-                        {activeEvent.selectionStatus === 'submitted' && (
-                            <div className="flex flex-col sm:flex-row gap-4">
-                                <div className="flex-1 space-y-2">
-                                    <h4 className="font-bold text-slate-900">Client Selection Submitted</h4>
-                                    <p className="text-xs text-slate-500">Selections are locked. Review them or start editing.</p>
-                                </div>
-                                <div className="flex items-end gap-3">
-                                    <button onClick={() => handleWorkflowChange('open')} className="px-6 py-3 bg-white border border-slate-200 text-slate-600 rounded-xl text-xs font-black uppercase tracking-widest hover:border-red-200 hover:text-red-500 flex items-center gap-2 transition-all"><Unlock className="w-4 h-4" /> Unlock Selection</button>
-                                    <div className="flex flex-col gap-2">
-                                        <label className="text-[9px] font-bold text-slate-400 uppercase">Target Delivery Date</label>
-                                        <div className="flex gap-2">
-                                            <input type="date" className="px-4 py-2 rounded-xl border border-slate-200 text-xs outline-none" onChange={(e) => setDeliveryDate(e.target.value)}/>
-                                            <button onClick={() => handleWorkflowChange('editing')} disabled={!deliveryDate} className="px-6 py-3 bg-[#10B981] text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-[#059669] disabled:opacity-50 disabled:cursor-not-allowed transition-all">Start Editing</button>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-                        {activeEvent.selectionStatus === 'open' && (
-                            <div className="text-center py-8">
-                                <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Waiting for client submission...</p>
-                                <button onClick={() => handleWorkflowChange('submitted')} className="mt-4 px-6 py-2 bg-slate-100 text-slate-500 rounded-lg text-[10px] font-bold uppercase hover:bg-slate-200">Force Submit (Manual Override)</button>
-                            </div>
-                        )}
-                        {/* ... other statuses ... */}
-                    </div>
-                </div>
-            </div>
-        )}
-
-        {/* GALLERY TAB (Raw Images) */}
-        {activeTab === 'sorted' && (
-            <div className="max-w-7xl mx-auto h-full flex flex-col relative">
-                {/* REMOVED: Floating upload button */}
-                <GalleryView isPhotographer={true} onUploadClick={() => setIsRawUploadModalOpen(true)} />
-            </div>
-        )}
+           </div>
+        </div>
         
-        {/* SELECTIONS TAB (Edited Images) */}
-        {activeTab === 'selections' && (
-          <div className="max-w-7xl mx-auto space-y-6">
-             <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm flex items-center justify-between">
-                <div>
-                  <h3 className="text-xl font-black text-slate-900 tracking-tight uppercase">Client Selections</h3>
-                  <div className="flex items-center gap-4 mt-1 text-xs text-slate-500 font-medium">
-                      <span>{selectedPhotos.length} Selected</span>
-                      <span className="w-1 h-1 bg-slate-300 rounded-full"></span>
-                      <span className="text-green-600">{approvedCount} Approved</span>
-                      <span className="w-1 h-1 bg-slate-300 rounded-full"></span>
-                      <span className="text-amber-600">{reworkCount} Rework Requested</span>
-                  </div>
-                </div>
-                <div className="flex gap-3">
-                  <input type="file" ref={bulkEditUploadRef} className="hidden" multiple accept="image/*" onChange={handleBulkEditUpload}/>
-                  <button onClick={() => bulkEditUploadRef.current?.click()} className="flex items-center gap-2 px-6 py-3 bg-slate-900 text-white font-black uppercase tracking-widest rounded-2xl text-[10px] shadow-xl hover:bg-black transition-colors">
-                    <UploadCloud className="w-4 h-4" /> Upload Edited Photos
-                  </button>
-                  <button onClick={() => alert('Exporting sidecars...')} className="flex items-center gap-2 px-6 py-3 bg-indigo-50 text-indigo-600 font-black uppercase tracking-widest rounded-2xl text-[10px]">
-                    <FileJson className="w-4 h-4" /> Export XMP
-                  </button>
-                </div>
-             </div>
-             {/* ... Grid logic same as before ... */}
-             <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
-               <input type="file" ref={editUploadRef} className="hidden" accept="image/*" onChange={handleEditUpload} />
-               {selectedPhotos.map(p => (
-                 <div key={p.id} className="relative aspect-square rounded-2xl overflow-hidden shadow-sm border-4 border-white group">
-                   <img src={p.editedUrl || p.url} className="w-full h-full object-cover" alt="" />
-                   <div className="absolute top-2 right-2 flex gap-1">
-                        {p.reviewStatus === 'approved' && <div className="bg-green-500 text-white p-1 rounded-full shadow-md"><CheckCircle className="w-3 h-3" /></div>}
-                        {p.reviewStatus === 'changes_requested' && <div className="bg-amber-500 text-white p-1 rounded-full shadow-md"><AlertCircle className="w-3 h-3" /></div>}
-                        {p.comments && p.comments.some(c => !c.resolved) && <div className="bg-red-500 text-white p-1 rounded-full shadow-md animate-pulse"><MessageCircle className="w-3 h-3" /></div>}
-                   </div>
-                   <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-3 p-2">
-                       <button onClick={() => { setActivePhotoForEdit(p.id); editUploadRef.current?.click(); }} className="flex items-center gap-2 px-3 py-2 bg-white text-slate-900 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-[#10B981] hover:text-white transition-colors">
-                           <UploadCloud className="w-3 h-3" /> Upload Edit
-                       </button>
-                       <button onClick={() => setActivePhotoForComments(p.id)} className="flex items-center gap-2 px-3 py-2 bg-white text-slate-900 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-indigo-600 hover:text-white transition-colors">
-                           <MessageCircle className="w-3 h-3" /> {p.comments?.length || 0} Comments
-                       </button>
-                   </div>
-                 </div>
-               ))}
-             </div>
-          </div>
-        )}
+        <div className="flex flex-col items-end gap-3">
+            <div className="flex items-center gap-2">
+                <button 
+                  onClick={() => onNavigate('gallery')}
+                  className="px-5 py-2.5 bg-indigo-50 text-indigo-700 rounded-xl font-black uppercase tracking-widest text-[10px] hover:bg-indigo-100 transition-colors"
+                >
+                    View Gallery
+                </button>
+                <button 
+                  onClick={triggerFolderUpload}
+                  disabled={isUploading}
+                  className="px-5 py-2.5 bg-slate-900 text-white rounded-xl font-black uppercase tracking-widest text-[10px] hover:bg-black transition-colors flex items-center gap-2 disabled:opacity-50"
+                >
+                    {isUploading ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />} 
+                    Upload Edits
+                </button>
+                <input 
+                    type="file" 
+                    ref={fileInputRef} 
+                    className="hidden" 
+                    multiple 
+                    accept="image/*" 
+                    onChange={handleFolderSelect} 
+                />
+            </div>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                ID: {activeEvent.id.slice(-6)}
+            </p>
+        </div>
       </div>
 
-      {/* RAW UPLOAD MODAL */}
-      {isRawUploadModalOpen && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-              <div className="bg-white rounded-[2.5rem] w-full max-w-2xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
-                  <div className="p-6 border-b border-slate-100 flex items-center justify-between">
-                      <h3 className="font-black text-slate-900 uppercase tracking-tight">Upload Raw Images</h3>
-                      <button onClick={() => setIsRawUploadModalOpen(false)}><X className="w-5 h-5 text-slate-400" /></button>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          <div className="lg:col-span-2 space-y-8">
+              {/* Workflow Status */}
+              <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm space-y-6">
+                  <div className="flex items-center justify-between">
+                      <h3 className="font-bold text-slate-900">Workflow Status</h3>
+                      <span className="text-xs font-black uppercase tracking-widest text-indigo-600 bg-indigo-50 px-3 py-1 rounded-lg">
+                          {activeEvent.selectionStatus}
+                      </span>
                   </div>
-                  <div className="p-8 space-y-6 overflow-y-auto">
-                        <div className="bg-slate-50 p-4 rounded-3xl border border-slate-100 shadow-sm flex items-center gap-4">
-                            <div className="flex-1">
-                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-2 mb-1 block">Assign to Sub-Event</label>
-                                <div className="flex gap-2">
-                                    <select value={selectedSubEvent} onChange={(e) => {if(e.target.value === 'new') setIsSubEventModalOpen(true); else setSelectedSubEvent(e.target.value);}} className="w-full p-3 bg-white border border-slate-200 rounded-xl text-xs font-bold outline-none focus:border-[#10B981]">
-                                        <option value="" disabled>Select Sub-Event</option>
-                                        {activeEvent.subEvents.map(se => (
-                                            <option key={se.id} value={se.id}>{se.name}</option>
-                                        ))}
-                                        <option value="new">+ Create New Sub-Event</option>
-                                    </select>
-                                </div>
-                            </div>
-                        </div>
-                        {/* Optimizer & Upload Box */}
-                        <div className="bg-white p-12 rounded-[2rem] border-2 border-dashed border-slate-200 flex flex-col items-center justify-center gap-8 text-center transition-all hover:border-[#10B981]/40 overflow-hidden">
-                        {isUploading ? (
-                            <div className="w-full max-w-xl space-y-10 py-4 animate-in fade-in duration-300">
-                            {/* ... Upload Animation ... */}
-                            <div className="space-y-2">
-                                <h4 className="text-2xl font-black text-slate-900 tracking-tight uppercase">{uploadStage} Assets...</h4>
-                                <p className="text-[10px] text-[#10B981] font-black uppercase tracking-[0.3em] h-4">{currentFileName}</p>
-                            </div>
-                            <div className="relative px-8">
-                                <div className="overflow-hidden h-3 flex rounded-full bg-slate-50 border border-slate-100 p-0.5">
-                                <div style={{ width: `${uploadProgress}%` }} className="shadow-inner flex flex-col text-center whitespace-nowrap text-white justify-center bg-[#10B981] transition-all duration-300 rounded-full"/>
-                                </div>
-                            </div>
-                            </div>
-                        ) : (
-                            <>
-                            <input type="file" ref={fileInputRef} onChange={handleFolderSelect} className="hidden" multiple {...({ webkitdirectory: "", directory: "" } as any)} />
-                            <div className="w-24 h-24 bg-slate-900 text-white rounded-[2.5rem] flex items-center justify-center shadow-2xl relative group-hover:scale-110 transition-transform cursor-pointer" onClick={triggerFolderUpload}>
-                                <FolderOpen className="w-10 h-10" />
-                            </div>
-                            <div className="space-y-2">
-                                <h4 className="text-2xl font-black text-slate-900 tracking-tight uppercase">SOURCE INGESTION</h4>
-                                <p className="text-sm text-slate-400 font-bold uppercase tracking-[0.2em] max-w-xs mx-auto">Upload Event Folder for AI-Processing</p>
-                            </div>
-                            <div className="flex gap-4 w-full max-w-sm">
-                                <button onClick={triggerFolderUpload} disabled={!selectedSubEvent} className="w-full bg-[#10B981] hover:bg-slate-900 text-white px-8 py-5 rounded-2xl font-black uppercase tracking-[0.25em] flex items-center justify-center gap-3 transition-all shadow-xl shadow-[#10B981]/20 active:scale-95 text-[11px] disabled:opacity-50 disabled:cursor-not-allowed">
-                                <Zap className="w-4 h-4" /> Open Folder
-                                </button>
-                            </div>
-                            </>
-                        )}
-                        </div>
+                  
+                  <div className="relative pt-2">
+                      <div className="absolute top-1/2 left-0 right-0 h-1 bg-slate-100 -translate-y-1/2" />
+                      <div className="flex justify-between relative z-10">
+                          {['open', 'submitted', 'editing', 'review', 'accepted'].map((step, i) => {
+                              const isActive = activeEvent.selectionStatus === step;
+                              const isPast = ['open', 'submitted', 'editing', 'review', 'accepted'].indexOf(activeEvent.selectionStatus) >= i;
+                              return (
+                                  <div key={step} className="flex flex-col items-center gap-2 bg-white px-2">
+                                      <div className={`w-3 h-3 rounded-full border-2 ${isActive ? 'bg-indigo-600 border-indigo-600 scale-125' : isPast ? 'bg-green-500 border-green-500' : 'bg-white border-slate-200'}`} />
+                                      <span className={`text-[9px] font-black uppercase tracking-widest ${isActive ? 'text-indigo-600' : isPast ? 'text-green-600' : 'text-slate-300'}`}>{step}</span>
+                                  </div>
+                              );
+                          })}
+                      </div>
                   </div>
-              </div>
-          </div>
-      )}
 
-      {/* Edit Details Modal */}
-      {isEditDetailsOpen && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-          <div className="bg-white rounded-[2.5rem] w-full max-w-lg overflow-hidden shadow-2xl max-h-[90vh] flex flex-col">
-            <div className="p-6 border-b border-slate-100 flex items-center justify-between">
-              <h3 className="font-black text-slate-900 uppercase tracking-tight">Configuration</h3>
-              <button onClick={() => setIsEditDetailsOpen(false)} className="p-2 hover:bg-slate-100 rounded-full transition-colors"><X className="w-5 h-5 text-slate-400" /></button>
-            </div>
-            
-            <div className="p-8 space-y-6 overflow-y-auto no-scrollbar">
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Event Name</label>
-                <input type="text" className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold outline-none text-slate-900" value={editForm.name || ''} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} />
-              </div>
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Event Location</label>
-                <div className="relative">
-                    <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                    <input 
-                        type="text" 
-                        className="w-full pl-10 pr-4 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold outline-none text-slate-900" 
-                        value={editForm.location || ''} 
-                        onChange={(e) => setEditForm({ ...editForm, location: e.target.value })} 
-                        placeholder="e.g. Grand Hyatt, Mumbai"
-                    />
-                </div>
-              </div>
-            </div>
-            <div className="p-8 bg-slate-50 flex gap-4 mt-auto">
-              <button onClick={() => setIsEditDetailsOpen(false)} className="flex-1 py-4 text-xs font-black uppercase tracking-widest text-slate-400">Cancel</button>
-              <button onClick={handleUpdateDetails} className="flex-1 py-4 bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl">Save</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Add Client Modal */}
-      {isAddClientModalOpen && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-              <div className="bg-white rounded-[2rem] p-8 w-full max-w-sm space-y-4">
-                  <h3 className="font-black text-lg">Add Authorized Client</h3>
-                  <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-slate-400 uppercase">Client Name</label>
-                      <input type="text" placeholder="Full Name" className="w-full p-3 border rounded-xl" value={newClientForm.name} onChange={e => setNewClientForm({...newClientForm, name: e.target.value})} />
-                  </div>
-                  <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-slate-400 uppercase">Email Address</label>
-                      <input type="email" placeholder="client@example.com" className="w-full p-3 border rounded-xl" value={newClientForm.email} onChange={e => setNewClientForm({...newClientForm, email: e.target.value})} />
-                  </div>
-                  <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-slate-400 uppercase">Phone (Optional)</label>
-                      <input type="tel" placeholder="+91..." className="w-full p-3 border rounded-xl" value={newClientForm.phone} onChange={e => setNewClientForm({...newClientForm, phone: e.target.value})} />
-                  </div>
-                  <div className="flex gap-2 pt-4">
-                      <button onClick={() => setIsAddClientModalOpen(false)} className="flex-1 py-3 text-slate-500 font-bold">Cancel</button>
-                      <button onClick={handleAddClient} disabled={!newClientForm.name || !newClientForm.email} className="flex-1 py-3 bg-slate-900 text-white rounded-xl font-bold disabled:opacity-50">Add Access</button>
-                  </div>
-              </div>
-          </div>
-      )}
-
-      {/* New Sub Event Modal */}
-      {isSubEventModalOpen && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-              <div className="bg-white rounded-[2rem] p-8 w-full max-w-sm space-y-4">
-                  <h3 className="font-black text-lg">Add Sub-Event</h3>
-                  <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-slate-400 uppercase">Sub-Event Name</label>
-                      <input type="text" placeholder="e.g. Reception" className="w-full p-3 border rounded-xl" value={newSubEvent.name} onChange={e => setNewSubEvent({...newSubEvent, name: e.target.value})} />
-                  </div>
-                  <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-slate-400 uppercase">Start Date</label>
-                      <input type="date" className="w-full p-3 border rounded-xl" value={newSubEvent.date} onChange={e => setNewSubEvent({...newSubEvent, date: e.target.value})} />
-                  </div>
-                  <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-slate-400 uppercase">End Date (Optional)</label>
-                      <input type="date" placeholder="End Date (Optional)" className="w-full p-3 border rounded-xl" value={newSubEvent.endDate} onChange={e => setNewSubEvent({...newSubEvent, endDate: e.target.value})} />
-                  </div>
-                  <div className="flex gap-2 pt-4">
-                      <button onClick={() => setIsSubEventModalOpen(false)} className="flex-1 py-3 text-slate-500 font-bold">Cancel</button>
-                      <button onClick={handleCreateSubEvent} className="flex-1 py-3 bg-slate-900 text-white rounded-xl font-bold">Create</button>
-                  </div>
-              </div>
-          </div>
-      )}
-
-      {/* Record Payment Modal */}
-      {isPaymentModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-          <div className="bg-white rounded-[2.5rem] w-full max-w-sm overflow-hidden shadow-2xl">
-            {/* ... Payment Modal Content ... */}
-            <div className="p-6 border-b border-slate-100 flex items-center justify-between">
-              <h3 className="font-black text-slate-900 uppercase tracking-tight">Record Payment</h3>
-              <button onClick={() => setIsPaymentModalOpen(false)} className="p-2 hover:bg-slate-100 rounded-full transition-colors"><X className="w-5 h-5 text-slate-400" /></button>
-            </div>
-            <div className="p-8 space-y-6">
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Amount Received (₹)</label>
-                <input type="number" className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-xl font-bold outline-none text-slate-900" value={paymentAmount} onChange={(e) => setPaymentAmount(e.target.value)} placeholder="0"/>
-              </div>
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Payment Date</label>
-                <input type="date" className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold outline-none text-slate-900" value={paymentDate} onChange={(e) => setPaymentDate(e.target.value)}/>
-              </div>
-            </div>
-            <div className="p-8 bg-slate-50 flex gap-4">
-              <button onClick={() => setIsPaymentModalOpen(false)} className="flex-1 py-4 text-xs font-black uppercase tracking-widest text-slate-400">Cancel</button>
-              <button onClick={handleRecordPayment} className="flex-1 py-4 bg-[#10B981] text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl">Confirm</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Comment Resolver Modal */}
-      {activePhotoForComments && (
-          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-              <div className="bg-white rounded-[2rem] w-full max-w-md overflow-hidden shadow-2xl flex flex-col max-h-[80vh]">
-                  <div className="p-6 border-b border-slate-100 flex items-center justify-between">
-                      <h3 className="font-bold text-slate-900">Resolve Feedback</h3>
-                      <button onClick={() => setActivePhotoForComments(null)}><X className="w-5 h-5 text-slate-400" /></button>
-                  </div>
-                  <div className="p-6 overflow-y-auto space-y-4 bg-slate-50 flex-1">
-                      {photos.find(p => p.id === activePhotoForComments)?.comments?.map(c => (
-                          <div key={c.id} className={`p-4 rounded-xl border ${c.resolved ? 'bg-green-50 border-green-100' : 'bg-white border-slate-200 shadow-sm'}`}>
-                              <div className="flex justify-between items-start mb-2">
-                                  <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">{c.author}</span>
-                                  <span className="text-[9px] text-slate-400">{new Date(c.date).toLocaleDateString()}</span>
-                              </div>
-                              <p className="text-sm font-medium text-slate-800">{c.text}</p>
-                              {!c.resolved && (
-                                  <button onClick={() => resolveComment(activePhotoForComments, c.id)} className="mt-3 text-[10px] font-bold text-indigo-600 uppercase tracking-widest hover:underline">Mark Resolved</button>
-                              )}
-                              {c.resolved && (
-                                  <div className="mt-2 flex items-center gap-1 text-[10px] font-bold text-green-600 uppercase tracking-widest"><CheckCircle className="w-3 h-3" /> Resolved</div>
-                              )}
-                          </div>
-                      ))}
-                      {(!photos.find(p => p.id === activePhotoForComments)?.comments?.length) && (
-                          <p className="text-center text-slate-400 text-sm italic">No comments on this photo.</p>
+                  <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-50">
+                      {activeEvent.selectionStatus === 'submitted' && (
+                          <button onClick={() => advanceWorkflow('editing')} className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold shadow-lg hover:bg-indigo-700">
+                              Start Editing Phase
+                          </button>
+                      )}
+                      {activeEvent.selectionStatus === 'editing' && (
+                          <button onClick={() => advanceWorkflow('review')} className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold shadow-lg hover:bg-indigo-700">
+                              Submit for Review
+                          </button>
+                      )}
+                      {activeEvent.selectionStatus === 'open' ? (
+                           <button onClick={() => advanceWorkflow('submitted')} className="px-4 py-2 bg-slate-100 text-slate-600 rounded-xl text-xs font-bold hover:bg-slate-200 flex items-center gap-2">
+                               <Lock className="w-3 h-3" /> Force Lock Selection
+                           </button>
+                      ) : (
+                          <button onClick={() => advanceWorkflow('open')} className="px-4 py-2 bg-slate-100 text-slate-600 rounded-xl text-xs font-bold hover:bg-slate-200 flex items-center gap-2">
+                              <Unlock className="w-3 h-3" /> Re-open Selection
+                          </button>
                       )}
                   </div>
               </div>
+
+              {/* Stats Grid */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                  <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm">
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Total Photos</p>
+                      <p className="text-2xl font-black text-slate-900 mt-1">{eventPhotos.length}</p>
+                  </div>
+                  <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm">
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Selections</p>
+                      <p className="text-2xl font-black text-indigo-600 mt-1">{selectedPhotos.length}</p>
+                  </div>
+                  <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm">
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Approved</p>
+                      <p className="text-2xl font-black text-green-600 mt-1">{approvedCount}</p>
+                  </div>
+                  <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm">
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Changes Req</p>
+                      <p className="text-2xl font-black text-amber-500 mt-1">{changesRequestedCount}</p>
+                  </div>
+                  <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm col-span-2 sm:col-span-2">
+                      <div className="flex justify-between items-end">
+                        <div>
+                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Financials</p>
+                            <div className="flex items-baseline gap-1 mt-1">
+                                <span className="text-2xl font-black text-slate-900">₹{totalPaid.toLocaleString()}</span>
+                                <span className="text-xs font-bold text-slate-400">/ ₹{activeEvent.price?.toLocaleString()}</span>
+                            </div>
+                        </div>
+                        <div className="text-right">
+                             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Balance</p>
+                             <p className={`text-sm font-black ${balance > 0 ? 'text-red-500' : 'text-green-500'}`}>₹{balance.toLocaleString()}</p>
+                        </div>
+                      </div>
+                  </div>
+              </div>
           </div>
-      )}
+
+          <div className="space-y-8">
+              {/* Client Info */}
+              <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm space-y-6">
+                  <h3 className="font-bold text-slate-900">Client Details</h3>
+                  <div className="space-y-4">
+                      <div className="flex items-center gap-4">
+                          <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center font-black text-slate-400">
+                              {activeEvent.clientEmail ? activeEvent.clientEmail.charAt(0).toUpperCase() : 'C'}
+                          </div>
+                          <div>
+                              <p className="text-xs font-bold text-slate-900">{activeEvent.clientEmail}</p>
+                              <p className="text-[10px] text-slate-400">{activeEvent.clientPhone || 'No Phone'}</p>
+                          </div>
+                      </div>
+                      
+                      <div className="pt-4 border-t border-slate-50 space-y-2">
+                         <div className="flex justify-between text-xs">
+                             <span className="text-slate-500 font-medium">Event Plan</span>
+                             <span className="font-bold text-slate-900">{activeEvent.plan}</span>
+                         </div>
+                         <div className="flex justify-between text-xs">
+                             <span className="text-slate-500 font-medium">Optimization</span>
+                             <span className="font-bold text-slate-900">{activeEvent.optimizationSetting || 'Standard'}</span>
+                         </div>
+                      </div>
+                  </div>
+              </div>
+
+              {/* Quick Actions */}
+               <div className="bg-slate-900 p-8 rounded-[2.5rem] text-white shadow-xl space-y-4">
+                   <h3 className="font-bold text-white flex items-center gap-2">
+                       <Settings className="w-4 h-4" /> Quick Actions
+                   </h3>
+                   <div className="space-y-2">
+                       <button className="w-full py-3 bg-white/10 hover:bg-white/20 rounded-xl text-xs font-bold transition-colors text-left px-4">
+                           Send Selection Reminder
+                       </button>
+                       <button className="w-full py-3 bg-white/10 hover:bg-white/20 rounded-xl text-xs font-bold transition-colors text-left px-4">
+                           Generate Invoice
+                       </button>
+                       <button className="w-full py-3 bg-white/10 hover:bg-white/20 rounded-xl text-xs font-bold transition-colors text-left px-4 text-red-300 hover:text-red-200">
+                           Delete Event
+                       </button>
+                   </div>
+               </div>
+          </div>
+      </div>
     </div>
   );
 };

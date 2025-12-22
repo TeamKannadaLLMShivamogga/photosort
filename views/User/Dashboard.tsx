@@ -1,49 +1,24 @@
-
 import React from 'react';
-import { 
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell
-} from 'recharts';
-import { 
-  TrendingUp, Star, Users, CheckCircle2, 
-  Calendar, Camera, Clock, ArrowRight, Image as ImageIcon, Sparkles, Smile, Users as GroupIcon, Heart, CreditCard, RefreshCw,
-  AlertCircle, ChevronRight, MapPin, Timer
-} from 'lucide-react';
 import { useData } from '../../context/DataContext';
-import EventSelector from './EventSelector';
-
-const COLORS = ['#6366f1', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981'];
+import { Clock, Image as ImageIcon, Wallet, CheckCircle, AlertCircle, ArrowRight } from 'lucide-react';
 
 interface UserDashboardProps {
-  onNavigate: (view: string, params?: any) => void;
+  onNavigate: (view: string) => void;
 }
 
 const UserDashboard: React.FC<UserDashboardProps> = ({ onNavigate }) => {
-  const { activeEvent, photos, selectedPhotos, setActiveEvent } = useData();
+  const { activeEvent, photos } = useData();
 
-  if (!activeEvent) {
-    return <EventSelector embedded />;
-  }
+  if (!activeEvent) return <div className="p-10 text-center text-slate-400">No active event selected.</div>;
 
   const eventPhotos = photos.filter(p => p.eventId === activeEvent.id);
-  const aiPicks = eventPhotos.filter(p => p.isAiPick);
-  const highQuality = eventPhotos.filter(p => p.quality === 'high');
-  const peopleCount = new Set(eventPhotos.flatMap(p => p.people)).size;
-
-  // Mocked AI Insights derived from photo data
-  const insights = [
-    { label: 'Dancing moments', value: Math.floor(eventPhotos.length * 0.15), icon: '💃' },
-    { label: 'Smiling faces', value: Math.floor(eventPhotos.length * 0.4), icon: '😊' },
-    { label: 'Ceremony highlights', value: Math.floor(eventPhotos.length * 0.25), icon: '🎉' },
-    { label: 'Group photos', value: Math.floor(eventPhotos.length * 0.1), icon: '👨‍👩‍👧‍👦' },
-  ];
 
   const subEventStats = activeEvent.subEvents.map(se => ({
     name: se.name,
-    count: eventPhotos.filter(p => p.subEventId === se.id).length
+    count: eventPhotos.filter(p => (p.subEventId === se.id) || (p.category === se.name)).length
   }));
 
-  const totalPaid = (activeEvent as any).paidAmount || (activeEvent.price || 0) / 2;
+  const totalPaid = activeEvent.paidAmount || 0;
   const balance = (activeEvent.price || 0) - totalPaid;
 
   const getStatusColor = (status: string) => {
@@ -51,256 +26,110 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ onNavigate }) => {
           case 'open': return 'bg-blue-50 text-blue-700 border-blue-100';
           case 'submitted': return 'bg-amber-50 text-amber-700 border-amber-100';
           case 'editing': return 'bg-purple-50 text-purple-700 border-purple-100';
-          case 'review': return 'bg-orange-50 text-orange-700 border-orange-100';
-          case 'accepted': return 'bg-emerald-50 text-emerald-700 border-emerald-100';
+          case 'review': return 'bg-pink-50 text-pink-700 border-pink-100';
+          case 'accepted': return 'bg-green-50 text-green-700 border-green-100';
           default: return 'bg-slate-50 text-slate-700';
       }
   };
 
-  const getStatusText = (status: string) => {
-      switch(status) {
-          case 'open': return 'Selection Open';
-          case 'submitted': return 'Submitted for Editing';
-          case 'editing': return 'Editing in Progress';
-          case 'review': return 'Ready for Review';
-          case 'accepted': return 'Completed';
-          default: return status;
-      }
-  };
-
-  const getDaysRemaining = (dateStr?: string) => {
-      if (!dateStr) return null;
-      const target = new Date(dateStr);
-      const today = new Date();
-      const diff = target.getTime() - today.getTime();
-      return Math.ceil(diff / (1000 * 3600 * 24));
-  };
-
-  const daysRemaining = getDaysRemaining(activeEvent.timeline?.deliveryEstimate);
+  const selectedCount = eventPhotos.filter(p => p.isSelected).length;
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-500 max-w-7xl mx-auto">
-      
-      {/* Workflow Status Pulse (User Story 9) */}
-      <button 
-        onClick={() => onNavigate('selections')}
-        className={`w-full flex items-center justify-between px-6 py-3 rounded-2xl border transition-all ${getStatusColor(activeEvent.selectionStatus)} shadow-sm hover:shadow-md group`}
-      >
-         <div className="flex items-center gap-3">
-            <div className="relative">
-                <div className="w-3 h-3 bg-current rounded-full animate-ping absolute opacity-75"></div>
-                <div className="w-3 h-3 bg-current rounded-full relative"></div>
-            </div>
-            <span className="text-xs font-black uppercase tracking-widest">{getStatusText(activeEvent.selectionStatus)}</span>
-            {activeEvent.timeline?.deliveryEstimate && (
-                <div className="flex items-center gap-2 border-l border-current/20 pl-3">
-                    <span className="text-[10px] font-bold opacity-80">Deadline: {new Date(activeEvent.timeline.deliveryEstimate).toLocaleDateString()}</span>
-                    {daysRemaining !== null && (
-                        <span className={`text-[10px] font-black uppercase tracking-widest flex items-center gap-1 ${daysRemaining < 0 ? 'text-red-600' : ''}`}>
-                            <Timer className="w-3 h-3" />
-                            {daysRemaining < 0 ? `${Math.abs(daysRemaining)} DAYS OVERDUE` : `${daysRemaining} DAYS LEFT`}
-                        </span>
-                    )}
-                </div>
-            )}
-         </div>
-         <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest opacity-60 group-hover:opacity-100 transition-opacity">
-            View Details <ChevronRight className="w-4 h-4" />
-         </div>
-      </button>
-
-      {/* Dashboard Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-5">
-        <div className="flex items-center gap-5">
-          <div className="w-20 h-20 rounded-[2rem] overflow-hidden shadow-2xl border-4 border-white shrink-0">
-            <img src={activeEvent.coverImage} className="w-full h-full object-cover" alt="" />
-          </div>
-          <div>
-            <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight leading-none">{activeEvent.name}</h1>
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mt-2">
-                <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-500 uppercase tracking-widest">
-                    <Calendar className="w-3.5 h-3.5 text-indigo-500" />
-                    <span>
-                        {new Date(activeEvent.date).toLocaleDateString()}
-                        {activeEvent.endDate ? ` - ${new Date(activeEvent.endDate).toLocaleDateString()}` : ''}
-                    </span>
-                </div>
-                {activeEvent.location && (
-                    <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-500 uppercase tracking-widest">
-                        <MapPin className="w-3.5 h-3.5 text-rose-500" />
-                        <span>{activeEvent.location}</span>
-                    </div>
-                )}
-                <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-500 uppercase tracking-widest">
-                    <ImageIcon className="w-3.5 h-3.5 text-emerald-500" />
-                    <span>{eventPhotos.length || activeEvent.photoCount} photos</span>
-                </div>
-            </div>
-          </div>
+    <div className="space-y-8 animate-in fade-in duration-500 max-w-7xl mx-auto pb-20">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+           <h1 className="text-3xl font-black text-slate-900 uppercase tracking-tight">{activeEvent.name}</h1>
+           <div className="flex gap-2 mt-2">
+               <span className={`px-3 py-1 rounded-lg text-[10px] font-bold uppercase tracking-widest border ${getStatusColor(activeEvent.selectionStatus)}`}>
+                   Status: {activeEvent.selectionStatus}
+               </span>
+               <span className="px-3 py-1 bg-slate-100 text-slate-500 rounded-lg text-[10px] font-bold uppercase tracking-widest border border-slate-200">
+                   {new Date(activeEvent.date).toLocaleDateString()}
+               </span>
+           </div>
         </div>
-        <button 
-          onClick={() => setActiveEvent(null)}
-          className="flex items-center gap-2 px-4 py-2 bg-white text-slate-600 hover:text-indigo-600 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-all text-xs font-black uppercase tracking-widest"
-        >
-          <RefreshCw className="w-4 h-4" /> Change Event
-        </button>
+        
+        {activeEvent.selectionStatus === 'open' && (
+             <button 
+                onClick={() => onNavigate('gallery')}
+                className="px-6 py-3 bg-[#10B981] text-white rounded-2xl font-black uppercase tracking-widest text-xs shadow-xl shadow-[#10B981]/20 hover:bg-[#059669] transition-all active:scale-95 flex items-center gap-2"
+             >
+                 Select Photos <ArrowRight className="w-4 h-4" />
+             </button>
+        )}
       </div>
 
-      {/* Primary Stat Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {[
-          { 
-            label: 'Total Photos', 
-            value: eventPhotos.length, 
-            icon: ImageIcon, 
-            color: 'text-indigo-600', 
-            bg: 'bg-indigo-50/50',
-            onClick: () => onNavigate('gallery', { tab: 'all' })
-          },
-          { 
-            label: 'AI Picks', 
-            value: aiPicks.length, 
-            icon: Sparkles, 
-            color: 'text-purple-600', 
-            bg: 'bg-purple-50/50',
-            onClick: () => onNavigate('gallery', { tab: 'ai' })
-          },
-          { 
-            label: 'High Quality', 
-            value: highQuality.length, 
-            icon: Star, 
-            color: 'text-emerald-600', 
-            bg: 'bg-emerald-50/50',
-            onClick: () => onNavigate('gallery', { tab: 'all' }) 
-          },
-          { 
-            label: 'People Detected', 
-            value: peopleCount, 
-            icon: GroupIcon, 
-            color: 'text-blue-600', 
-            bg: 'bg-blue-50/50',
-            onClick: () => onNavigate('gallery', { tab: 'people' })
-          },
-        ].map((stat, i) => (
-          <button 
-            key={i} 
-            onClick={stat.onClick}
-            className="bg-white p-8 rounded-[2rem] border border-slate-100 shadow-sm flex items-center justify-between group hover:shadow-xl hover:scale-[1.02] transition-all cursor-pointer text-left w-full"
-          >
-            <div className="space-y-1">
-              <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">{stat.label}</p>
-              <p className="text-4xl font-black text-slate-900">{stat.value}</p>
-            </div>
-            <div className={`w-14 h-14 rounded-2xl flex items-center justify-center ${stat.bg} ${stat.color} group-hover:scale-110 transition-transform`}>
-              <stat.icon className="w-7 h-7" />
-            </div>
-          </button>
-        ))}
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-        {/* AI Insights & Payment Section */}
-        <div className="lg:col-span-7 space-y-8">
-          <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm space-y-8">
-            <div className="flex items-center gap-3">
-              <Sparkles className="w-6 h-6 text-purple-600" />
-              <h3 className="text-xl font-bold text-slate-900">AI Insights</h3>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              {insights.map((insight, i) => (
-                <div key={i} className="bg-slate-50/50 p-6 rounded-3xl border border-slate-100 space-y-3 hover:bg-white hover:shadow-sm transition-all">
-                  <span className="text-3xl">{insight.icon}</span>
-                  <div>
-                    <p className="text-3xl font-black text-slate-900">{insight.value}</p>
-                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">{insight.label}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm flex items-center gap-4">
+              <div className="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center">
+                  <ImageIcon className="w-6 h-6" />
+              </div>
+              <div>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Total Photos</p>
+                  <p className="text-2xl font-black text-slate-900">{activeEvent.photoCount}</p>
+              </div>
+          </div>
+          
+          <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm flex items-center gap-4">
+              <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center">
+                  <CheckCircle className="w-6 h-6" />
+              </div>
+              <div>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Selected</p>
+                  <p className="text-2xl font-black text-slate-900">{selectedCount}</p>
+              </div>
           </div>
 
-          {/* Payment Card */}
+          <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm flex items-center gap-4">
+              <div className="w-12 h-12 bg-amber-50 text-amber-600 rounded-2xl flex items-center justify-center">
+                  <Clock className="w-6 h-6" />
+              </div>
+              <div>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Deadline</p>
+                  <p className="text-xl font-black text-slate-900">{activeEvent.timeline?.selectionDeadline ? new Date(activeEvent.timeline.selectionDeadline).toLocaleDateString() : 'TBD'}</p>
+              </div>
+          </div>
+
+          <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm flex items-center gap-4">
+              <div className="w-12 h-12 bg-slate-900 text-white rounded-2xl flex items-center justify-center">
+                  <Wallet className="w-6 h-6" />
+              </div>
+              <div>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Balance</p>
+                  <p className="text-2xl font-black text-slate-900">₹{balance.toLocaleString()}</p>
+              </div>
+          </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm space-y-6">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <CreditCard className="w-6 h-6 text-amber-600" />
-                <h3 className="text-xl font-bold text-slate-900">Payment Status</h3>
-              </div>
-              <span className={`px-4 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-widest ${
-                balance === 0 ? 'bg-green-50 text-green-600' : 'bg-amber-50 text-amber-600'
-              }`}>
-                {balance === 0 ? 'Fully Paid' : 'Payment Pending'}
-              </span>
-            </div>
-            <div className="grid grid-cols-3 gap-4">
-              <div className="text-center p-4 bg-slate-50/50 rounded-2xl">
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Total Price</p>
-                <p className="text-xl font-black text-slate-900 mt-1">₹{(activeEvent.price || 0).toLocaleString()}</p>
-              </div>
-              <div className="text-center p-4 bg-slate-50/50 rounded-2xl">
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Paid Amount</p>
-                <p className="text-xl font-black text-green-600 mt-1">₹{totalPaid.toLocaleString()}</p>
-              </div>
-              <div className="text-center p-4 bg-slate-50/50 rounded-2xl">
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Remaining</p>
-                <p className="text-xl font-black text-amber-600 mt-1">₹{balance.toLocaleString()}</p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Quality & Timeline Column */}
-        <div className="lg:col-span-5 space-y-8">
-          <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm space-y-8">
-            <h3 className="text-xl font-bold text-slate-900">Quality Distribution</h3>
-            <div className="space-y-6">
-              {[
-                { label: 'High Quality', color: 'bg-emerald-500', percent: 33 },
-                { label: 'Medium Quality', color: 'bg-amber-500', percent: 33 },
-                { label: 'Low Quality', color: 'bg-slate-400', percent: 33 },
-              ].map((item, i) => (
-                <div key={i} className="space-y-2">
-                  <div className="flex justify-between items-center text-xs font-bold text-slate-800 uppercase tracking-wider">
-                    <span>{item.label}</span>
-                    <span className="text-slate-400">{item.percent}%</span>
-                  </div>
-                  <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
-                    <div className={`h-full ${item.color} rounded-full transition-all duration-1000`} style={{ width: `${item.percent}%` }} />
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <div className="pt-8 border-t border-slate-50 space-y-6">
-              <h3 className="text-xl font-bold text-slate-900">Photos by Day</h3>
+              <h3 className="font-bold text-slate-900 text-lg">Event Coverage</h3>
               <div className="space-y-4">
-                {subEventStats.map((se, i) => (
-                  <div key={i} className="flex items-center justify-between group cursor-default">
-                    <span className="text-sm font-bold text-slate-600 group-hover:text-indigo-600 transition-colors">{se.name}</span>
-                    <span className="text-xs font-bold text-slate-400 bg-slate-50 px-3 py-1 rounded-lg border border-slate-100 group-hover:bg-indigo-50 group-hover:text-indigo-600 transition-all">{se.count} photos</span>
-                  </div>
-                ))}
+                  {subEventStats.map((stat, i) => (
+                      <div key={i} className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                          <span className="font-bold text-slate-700 text-sm">{stat.name}</span>
+                          <span className="font-black text-slate-900">{stat.count} Photos</span>
+                      </div>
+                  ))}
+                  {subEventStats.length === 0 && <p className="text-slate-400 text-sm">No sub-events defined.</p>}
               </div>
-            </div>
           </div>
 
-          {/* Quick Action */}
-          <button 
-            onClick={() => onNavigate('gallery', { tab: 'all' })}
-            className="bg-slate-900 p-8 rounded-[2.5rem] text-white relative overflow-hidden group w-full text-left"
-          >
-            <div className="relative z-10 space-y-4">
-              <h4 className="text-2xl font-bold leading-tight">Ready to curate your album?</h4>
-              <p className="text-slate-400 text-sm leading-relaxed">Your selection process is 100% synchronized with your photographer's workflow.</p>
-              <div className="bg-[#10B981] text-white px-8 py-3 rounded-2xl font-bold text-sm hover:bg-[#059669] transition-all inline-flex items-center gap-2 group-hover:scale-105">
-                Go to Gallery <ArrowRight className="w-4 h-4" />
-              </div>
-            </div>
-            <div className="absolute -right-8 -bottom-8 opacity-10 group-hover:rotate-12 transition-transform">
-               <ImageIcon className="w-48 h-48" />
-            </div>
-          </button>
-        </div>
+          <div className="bg-gradient-to-br from-slate-900 to-slate-800 p-8 rounded-[2.5rem] shadow-2xl text-white flex flex-col justify-between relative overflow-hidden">
+               <div className="relative z-10 space-y-4">
+                   <div className="w-12 h-12 bg-white/10 rounded-2xl flex items-center justify-center backdrop-blur-md border border-white/10">
+                       <AlertCircle className="w-6 h-6 text-white" />
+                   </div>
+                   <div>
+                       <h3 className="text-xl font-black uppercase tracking-tight">Need Help?</h3>
+                       <p className="text-slate-400 text-sm font-medium mt-1">Contact your photographer for any queries regarding selection or payments.</p>
+                   </div>
+                   <button className="py-3 px-6 bg-white text-slate-900 rounded-xl font-black uppercase tracking-widest text-xs hover:bg-slate-100 transition-colors">
+                       Contact Studio
+                   </button>
+               </div>
+               <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/20 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2"></div>
+          </div>
       </div>
     </div>
   );
