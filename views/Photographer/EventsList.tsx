@@ -19,8 +19,9 @@ const PhotographerEventsList: React.FC<EventsListProps> = ({ onNavigate }) => {
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
 
+  // Robust filtering: ensure currentUser exists
   const myEvents = events
-    .filter(e => e.photographerId === currentUser?.id)
+    .filter(e => currentUser && e.photographerId === currentUser.id)
     .filter(e => statusFilter === 'all' || e.status === statusFilter)
     .filter(e => e.name.toLowerCase().includes(searchQuery.toLowerCase()))
     .filter(e => !fromDate || new Date(e.date) >= new Date(fromDate))
@@ -152,7 +153,12 @@ const PhotographerEventsList: React.FC<EventsListProps> = ({ onNavigate }) => {
                         <span className={`px-2 py-1 rounded text-[9px] font-bold uppercase ${event.status === 'active' ? 'bg-green-50 text-green-600' : 'bg-slate-100 text-slate-500'}`}>{event.status}</span>
                     </td>
                     <td className="p-6 text-center text-xs font-bold">₹{event.price?.toLocaleString()}</td>
-                    <td className="p-6 text-right"><Eye className="w-5 h-5 text-slate-400" /></td>
+                    <td className="p-6 text-right">
+                        {/* Made button interactive and explicit */}
+                        <button onClick={(e) => { e.stopPropagation(); handleEventClick(event); }} className="p-2 hover:bg-slate-100 rounded-full text-slate-400 hover:text-indigo-600">
+                             <Eye className="w-5 h-5" />
+                        </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -160,7 +166,10 @@ const PhotographerEventsList: React.FC<EventsListProps> = ({ onNavigate }) => {
           </div>
         )
       ) : (
-        <div className="text-center py-20 text-slate-400">No events found.</div>
+        <div className="text-center py-20 text-slate-400">
+             <p className="text-sm font-bold">No events found.</p>
+             <p className="text-xs mt-1 opacity-70">Check your filters or create a new event.</p>
+        </div>
       )}
 
       {/* Shared Create Event Modal */}
