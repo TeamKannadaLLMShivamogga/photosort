@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { DataProvider, useData } from './context/DataContext';
 import { UserRole, FamilyMember } from './types';
@@ -17,15 +16,19 @@ import AdminDashboard from './views/Admin/Dashboard';
 import { 
   LogIn, Camera, Bell, Search, Settings, User as UserIcon, Save, 
   Image as ImageIcon, Plus, Trash2, Upload, Heart, UserPlus, Info, Users, Menu,
-  CreditCard, Landmark, Globe, Smartphone, Mail, ShieldCheck, Zap, ChevronRight, Lock, Loader2
+  CreditCard, Landmark, Globe, Smartphone, Mail, ShieldCheck, Zap, ChevronRight, Lock, Loader2, ArrowRight
 } from 'lucide-react';
 
 const AppContent: React.FC = () => {
-  const { currentUser, activeEvent, login, updateUser, uploadAsset, uploadRawPhotos, uploadBulkEditedPhotos } = useData();
+  const { currentUser, activeEvent, login, signup, updateUser, uploadAsset, uploadRawPhotos, uploadBulkEditedPhotos } = useData();
   const [currentView, setCurrentView] = useState('dashboard');
   const [viewParams, setViewParams] = useState<any>(null); // State for navigation parameters
-  const [email, setEmail] = useState('');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  
+  // Auth State
+  const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
+  const [loginEmail, setLoginEmail] = useState('');
+  const [signupData, setSignupData] = useState({ name: '', email: '', phone: '' });
 
   // Profile Edit States
   const [editName, setEditName] = useState('');
@@ -159,53 +162,126 @@ const AppContent: React.FC = () => {
   if (!currentUser) {
     return (
       <div className="min-h-screen bg-[#F9FAFB] flex items-center justify-center p-4">
-        <div className="w-full max-w-md bg-white rounded-[3rem] shadow-2xl p-10 border border-slate-100 space-y-10 animate-in fade-in zoom-in-95 duration-500">
-          <div className="text-center space-y-4">
-            <div className="w-20 h-20 bg-[#10B981] rounded-2xl mx-auto flex items-center justify-center shadow-2xl shadow-[#10B981]/20 mb-6">
-              <Camera className="text-white w-10 h-10" />
-            </div>
-            <h1 className="text-4xl font-bold text-slate-900 tracking-tight text-center">PhotoSort Pro</h1>
-            <p className="text-slate-500 font-medium italic text-center">High-fidelity delivery & selection.</p>
-          </div>
-
-          <div className="space-y-6">
-            <div className="space-y-3">
-              <label className="text-xs font-bold text-slate-400 uppercase tracking-widest ml-1">Work Email</label>
-              <input 
-                type="email" 
-                placeholder="admin@photosort.com"
-                className="w-full px-6 py-5 bg-slate-50 border border-slate-200 rounded-3xl focus:outline-none focus:ring-4 focus:ring-[#10B981]/5 focus:border-[#10B981] transition-all text-lg font-medium text-slate-900"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-              />
-            </div>
-            <button 
-              onClick={() => login(email)}
-              className="w-full bg-slate-900 text-white font-bold py-5 rounded-3xl hover:bg-black transition-all flex items-center justify-center gap-2 shadow-2xl shadow-slate-900/10 text-lg"
-            >
-              <LogIn className="w-6 h-6" /> Platform Login
-            </button>
-          </div>
-
-          <div className="pt-8 border-t border-slate-100 space-y-4">
-             <p className="text-center text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em]">Quick Access Tiers</p>
-             <div className="grid grid-cols-1 gap-3">
-                {[
-                  { name: 'Super Admin', email: 'admin@photosort.com', color: 'bg-slate-50 text-slate-600' },
-                  { name: 'Photographer', email: 'photographer@photosort.com', color: 'bg-[#10B981]/5 text-[#10B981]' },
-                  { name: 'Client User', email: 'user@photosort.com', color: 'bg-indigo-50 text-indigo-600' }
-                ].map(acc => (
-                  <button 
-                    key={acc.email}
-                    onClick={() => { setEmail(acc.email); login(acc.email); }}
-                    className={`w-full p-4 rounded-2xl text-xs font-bold transition-all border border-transparent hover:border-current flex justify-between items-center ${acc.color}`}
-                  >
-                    <span>{acc.name}</span>
-                    <span className="opacity-60">{acc.email}</span>
-                  </button>
-                ))}
+        <div className="w-full max-w-md bg-white rounded-[3rem] shadow-2xl border border-slate-100 overflow-hidden animate-in fade-in zoom-in-95 duration-500">
+          
+          <div className="bg-slate-900 p-8 text-center relative overflow-hidden">
+             <div className="absolute top-0 left-0 w-full h-full bg-[url('https://images.unsplash.com/photo-1554048612-387768052bf7?auto=format&fit=crop&q=80')] bg-cover opacity-20"></div>
+             <div className="relative z-10">
+                <div className="w-16 h-16 bg-white/10 backdrop-blur-md rounded-2xl mx-auto flex items-center justify-center border border-white/20 mb-4 shadow-xl">
+                    <Camera className="text-white w-8 h-8" />
+                </div>
+                <h1 className="text-3xl font-black text-white tracking-tight uppercase">PhotoSort Pro</h1>
+                <p className="text-slate-400 font-bold text-[10px] uppercase tracking-[0.2em] mt-2">The Ultimate Delivery Platform</p>
              </div>
           </div>
+
+          <div className="p-8">
+             {/* Auth Toggle */}
+             <div className="flex bg-slate-50 p-1.5 rounded-2xl mb-8">
+                 <button 
+                    onClick={() => setAuthMode('login')}
+                    className={`flex-1 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${
+                        authMode === 'login' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-400 hover:text-slate-600'
+                    }`}
+                 >
+                    Login
+                 </button>
+                 <button 
+                    onClick={() => setAuthMode('signup')}
+                    className={`flex-1 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${
+                        authMode === 'signup' ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-400 hover:text-slate-600'
+                    }`}
+                 >
+                    Partner Signup
+                 </button>
+             </div>
+
+             {authMode === 'login' ? (
+                 <div className="space-y-6 animate-in slide-in-from-left-4 duration-300">
+                    <div className="space-y-2">
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Email Address</label>
+                        <div className="relative">
+                            <Mail className="absolute left-5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                            <input 
+                                type="email" 
+                                placeholder="you@example.com"
+                                className="w-full pl-12 pr-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-4 focus:ring-slate-100 focus:border-slate-300 transition-all text-sm font-bold text-slate-900"
+                                value={loginEmail}
+                                onChange={(e) => setLoginEmail(e.target.value)}
+                            />
+                        </div>
+                    </div>
+                    <button 
+                        onClick={() => login(loginEmail)}
+                        className="w-full bg-slate-900 text-white font-black uppercase tracking-widest text-xs py-5 rounded-2xl hover:bg-black transition-all flex items-center justify-center gap-2 shadow-xl shadow-slate-900/10 active:scale-95"
+                    >
+                        Access Account <ArrowRight className="w-4 h-4" />
+                    </button>
+                 </div>
+             ) : (
+                 <div className="space-y-4 animate-in slide-in-from-right-4 duration-300">
+                    <div className="space-y-1">
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Studio / Full Name</label>
+                        <div className="relative">
+                            <UserIcon className="absolute left-5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                            <input 
+                                type="text" 
+                                placeholder="e.g. Dream Lens Studio"
+                                className="w-full pl-12 pr-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-4 focus:ring-indigo-50 focus:border-indigo-200 transition-all text-sm font-bold text-slate-900"
+                                value={signupData.name}
+                                onChange={(e) => setSignupData({...signupData, name: e.target.value})}
+                            />
+                        </div>
+                    </div>
+                    <div className="space-y-1">
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Email Address</label>
+                        <div className="relative">
+                            <Mail className="absolute left-5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                            <input 
+                                type="email" 
+                                placeholder="studio@example.com"
+                                className="w-full pl-12 pr-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-4 focus:ring-indigo-50 focus:border-indigo-200 transition-all text-sm font-bold text-slate-900"
+                                value={signupData.email}
+                                onChange={(e) => setSignupData({...signupData, email: e.target.value})}
+                            />
+                        </div>
+                    </div>
+                    <div className="space-y-1">
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Phone Number</label>
+                        <div className="relative">
+                            <Smartphone className="absolute left-5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                            <input 
+                                type="tel" 
+                                placeholder="+91 98765 43210"
+                                className="w-full pl-12 pr-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-4 focus:ring-indigo-50 focus:border-indigo-200 transition-all text-sm font-bold text-slate-900"
+                                value={signupData.phone}
+                                onChange={(e) => setSignupData({...signupData, phone: e.target.value})}
+                            />
+                        </div>
+                    </div>
+                    <button 
+                        onClick={() => signup(signupData.name, signupData.email, signupData.phone)}
+                        className="w-full bg-indigo-600 text-white font-black uppercase tracking-widest text-xs py-5 rounded-2xl hover:bg-indigo-700 transition-all flex items-center justify-center gap-2 shadow-xl shadow-indigo-600/20 active:scale-95 mt-2"
+                    >
+                        Create Partner Account
+                    </button>
+                    <p className="text-[10px] text-center text-slate-400 font-medium">
+                        By registering, you agree to our Terms of Service. <br/> Client accounts are created automatically via Event invites.
+                    </p>
+                 </div>
+             )}
+          </div>
+          
+          {/* Quick Access (Demo Only) */}
+          <div className="px-8 pb-8 pt-0 opacity-40 hover:opacity-100 transition-opacity">
+             <p className="text-center text-[9px] font-bold text-slate-300 uppercase tracking-widest mb-3">——— DEMO ACCESS ———</p>
+             <div className="flex gap-2 justify-center">
+                 <button onClick={() => { setAuthMode('login'); setLoginEmail('admin@photosort.com'); login('admin@photosort.com'); }} className="px-3 py-1 bg-slate-100 rounded text-[9px] font-bold text-slate-500">Admin</button>
+                 <button onClick={() => { setAuthMode('login'); setLoginEmail('photographer@photosort.com'); login('photographer@photosort.com'); }} className="px-3 py-1 bg-slate-100 rounded text-[9px] font-bold text-slate-500">Photog</button>
+                 <button onClick={() => { setAuthMode('login'); setLoginEmail('user@photosort.com'); login('user@photosort.com'); }} className="px-3 py-1 bg-slate-100 rounded text-[9px] font-bold text-slate-500">Client</button>
+             </div>
+          </div>
+
         </div>
       </div>
     );

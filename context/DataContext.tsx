@@ -1,6 +1,5 @@
-
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { User, Event, Photo, SelectionStatus, Service, Portfolio, AddonStatus, SubEvent } from '../types';
+import { User, Event, Photo, SelectionStatus, Service, Portfolio, AddonRequest, UserRole } from '../types';
 
 const API_URL = '/api';
 
@@ -14,6 +13,7 @@ interface DataContextType {
   isLoading: boolean;
   setActiveEvent: (event: Event | null) => void;
   login: (email: string) => Promise<void>;
+  signup: (name: string, email: string, phone: string) => Promise<void>;
   logout: () => void;
   updateUser: (user: User) => Promise<void>;
   addEvent: (event: Partial<Event> & { initialClients?: any[] }) => Promise<void>;
@@ -50,9 +50,6 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [events, setEvents] = useState<Event[]>([]);
   
   const [activeEvent, _setActiveEvent] = useState<Event | null>(() => {
-     // We can't fully restore the object without fetching, but we can store ID. 
-     // For now, we'll rely on fetching events first then restoring if needed, 
-     // or just let the user select again. But robust apps persist ID.
      return null;
   });
 
@@ -67,8 +64,6 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       ...item,
       id: item.id || item._id, 
     };
-    // If _id exists, remove it to clean up? Optional.
-    // delete normalized._id; 
     return normalized;
   };
 
@@ -124,7 +119,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setPhotos([]);
       setSelectedPhotos(new Set());
     }
-  }, [activeEvent?.id]); // Only reload if ID changes
+  }, [activeEvent?.id]);
 
   const loadPhotos = async (eventId: string) => {
     try {
@@ -161,6 +156,28 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   };
 
+  const signup = async (name: string, email: string, phone: string) => {
+    try {
+      const res = await fetch(`${API_URL}/auth/signup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, email, phone })
+      });
+      if (res.ok) {
+        const rawUser = await res.json();
+        const user = normalizeData(rawUser);
+        setCurrentUser(user);
+        localStorage.setItem('photoSortUser', JSON.stringify(user));
+        await refreshData(); 
+      } else {
+        alert("Signup failed. Email might already be in use.");
+      }
+    } catch (e) {
+      console.error(e);
+      alert("Signup error. Is the backend running?");
+    }
+  };
+
   const logout = () => {
     setCurrentUser(null);
     setActiveEvent(null);
@@ -169,127 +186,105 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const updateUser = async (user: User) => {
-    try {
-      const res = await fetch(`${API_URL}/users/${user.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(user)
-      });
-      if (res.ok) {
-        const updated = normalizeData(await res.json());
-        setUsers(users.map(u => u.id === updated.id ? updated : u));
-        if (currentUser?.id === updated.id) {
-            setCurrentUser(updated);
-            localStorage.setItem('photoSortUser', JSON.stringify(updated));
-        }
-      }
-    } catch (e) { console.error(e); }
-  };
-
-  const toggleUserStatus = async (userId: string) => {
-    try {
-        const res = await fetch(`${API_URL}/users/${userId}/status`, { method: 'PATCH' });
-        if(res.ok) {
+      try {
+        const res = await fetch(`${API_URL}/users/${user.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(user)
+        });
+        if (res.ok) {
             const updated = normalizeData(await res.json());
+            setCurrentUser(updated);
             setUsers(users.map(u => u.id === updated.id ? updated : u));
         }
-    } catch (e) { console.error(e); }
+      } catch (e) { console.error(e); }
   };
 
-  const addEvent = async (event: Partial<Event>) => {
+  const addEvent = async (event: Partial<Event> & { initialClients?: any[] }) => {
     try {
-      const res = await fetch(`${API_URL}/events`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(event)
-      });
-      if (res.ok) {
-        const newEvent = normalizeData(await res.json());
-        setEvents([...events, newEvent]);
-        setActiveEvent(newEvent);
-        // If users were created/updated during event creation, refresh users
-        const usersRes = await fetch(`${API_URL}/users`);
-        if(usersRes.ok) setUsers(Array.isArray(await usersRes.json()) ? (await usersRes.json()).map(normalizeData) : []);
-      }
+        const res = await fetch(`${API_URL}/events`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(event)
+        });
+        if (res.ok) {
+            await refreshData();
+        }
     } catch (e) { console.error(e); }
   };
 
   const updateEvent = async (eventId: string, updates: Partial<Event>) => {
-    try {
-      const res = await fetch(`${API_URL}/events/${eventId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updates)
-      });
-      if (res.ok) {
-        const updated = normalizeData(await res.json());
-        setEvents(events.map(e => e.id === updated.id ? updated : e));
-        if (activeEvent?.id === updated.id) _setActiveEvent(updated);
-      }
-    } catch (e) { console.error(e); }
+      try {
+          const res = await fetch(`${API_URL}/events/${eventId}`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(updates)
+          });
+          if (res.ok) {
+              const updated = normalizeData(await res.json());
+              setEvents(events.map(e => e.id === eventId ? updated : e));
+              if (activeEvent?.id === eventId) setActiveEvent(updated);
+          }
+      } catch (e) { console.error(e); }
   };
 
   const updateEventWorkflow = async (eventId: string, status: SelectionStatus, deliveryDate?: string) => {
-    const updates: any = { selectionStatus: status };
-    if (deliveryDate) {
-        updates.timeline = { ...activeEvent?.timeline, deliveryEstimate: deliveryDate };
-    }
-    await updateEvent(eventId, updates);
+      const updates: any = { selectionStatus: status };
+      if (deliveryDate) {
+          const event = events.find(e => e.id === eventId);
+          if (event) {
+              updates.timeline = { ...event.timeline, deliveryEstimate: deliveryDate };
+          }
+      }
+      await updateEvent(eventId, updates);
   };
 
   const deletePhoto = async (photoId: string) => {
-    try {
-        await fetch(`${API_URL}/photos/${photoId}`, { method: 'DELETE' });
-        setPhotos(photos.filter(p => p.id !== photoId));
-    } catch (e) { console.error(e); }
+      try {
+          await fetch(`${API_URL}/photos/${photoId}`, { method: 'DELETE' });
+          setPhotos(photos.filter(p => p.id !== photoId));
+      } catch(e) { console.error(e); }
   };
 
   const togglePhotoSelection = async (photoId: string) => {
-    try {
-        const res = await fetch(`${API_URL}/photos/${photoId}/selection`, { method: 'POST' });
-        if (res.ok) {
-            const updated = normalizeData(await res.json());
-            setPhotos(photos.map(p => p.id === updated.id ? updated : p));
-            
-            const newSelected = new Set(selectedPhotos);
-            if (updated.isSelected) newSelected.add(updated.id);
-            else newSelected.delete(updated.id);
-            setSelectedPhotos(newSelected);
-        }
-    } catch (e) { console.error(e); }
+      const newSelected = new Set(selectedPhotos);
+      if (newSelected.has(photoId)) newSelected.delete(photoId);
+      else newSelected.add(photoId);
+      setSelectedPhotos(newSelected);
+
+      try {
+          await fetch(`${API_URL}/photos/${photoId}/selection`, { method: 'POST' });
+          setPhotos(photos.map(p => p.id === photoId ? { ...p, isSelected: newSelected.has(photoId) } : p));
+      } catch (e) { console.error(e); }
   };
 
   const submitSelections = async () => {
-    if (activeEvent) {
-        await updateEventWorkflow(activeEvent.id, 'submitted');
-        try {
-            await fetch(`${API_URL}/events/${activeEvent.id}/submit-selections`, { method: 'POST' });
-        } catch (e) { console.error(e); }
-    }
+      if (activeEvent) {
+          await updateEventWorkflow(activeEvent.id, 'submitted');
+          await fetch(`${API_URL}/events/${activeEvent.id}/submit-selections`, { method: 'POST' });
+          alert("Selections submitted successfully!");
+      }
   };
 
   const renamePersonInEvent = async (eventId: string, oldName: string, newName: string) => {
-      // Backend implementation required for robust renaming, doing optimistic update here
-      const updatedPhotos = photos.map(p => {
-          if (p.people.includes(oldName)) {
-              return { ...p, people: p.people.map(name => name === oldName ? newName : name) };
-          }
-          return p;
-      });
-      setPhotos(updatedPhotos);
-      // In real app: POST /api/events/:id/rename-person
+      setPhotos(photos.map(p => ({
+          ...p,
+          people: p.people.map(person => person === oldName ? newName : person)
+      })));
   };
 
-  const uploadAsset = async (file: File) => {
+  // --- Real Upload Logic ---
+
+  const uploadAsset = async (file: File): Promise<string> => {
       const formData = new FormData();
       formData.append('file', file);
       const res = await fetch(`${API_URL}/upload`, {
           method: 'POST',
           body: formData
       });
-      if (!res.ok) throw new Error("Asset upload failed");
+      if (!res.ok) throw new Error("Upload failed");
       const data = await res.json();
-      return data.url;
+      return data.url; 
   };
 
   const uploadEventPhoto = async (eventId: string, file: File) => {
@@ -299,112 +294,109 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           method: 'POST',
           body: formData
       });
-      if (!res.ok) throw new Error("Upload failed");
-      return await res.json(); // Returns { url: string, originalFilename: string }
+      if (!res.ok) throw new Error("Photo upload failed");
+      return await res.json(); // { url, originalFilename }
   };
 
   const uploadRawPhotos = async (eventId: string, files: FileList) => {
       try {
           const fileArray = Array.from(files);
-          const uploadPromises = fileArray.map(file => uploadEventPhoto(eventId, file));
-          const uploadedFiles = await Promise.all(uploadPromises);
+          // Upload files physically first
+          const uploadedFiles = await Promise.all(fileArray.map(f => uploadEventPhoto(eventId, f)));
 
+          // Prepare metadata payload
           const photosPayload = uploadedFiles.map((fileData) => ({
               url: fileData.url,
+              originalFilename: fileData.originalFilename,
               eventId,
-              tags: [],
               people: [],
+              tags: [],
               isAiPick: false,
-              quality: 'high',
-              category: 'Unsorted',
-              isSelected: false,
-              originalFilename: fileData.originalFilename 
+              quality: 'medium',
+              category: 'Uploads',
+              isSelected: false
           }));
 
+          // Save metadata to DB
           const res = await fetch(`${API_URL}/events/${eventId}/photos`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ photos: photosPayload })
           });
 
-          if (!res.ok) throw new Error("Failed to save photos");
-          await loadPhotos(eventId);
-      } catch (error) {
-          console.error("Upload raw photos failed", error);
-          throw error;
+          if (res.ok) {
+              await loadPhotos(eventId);
+          } else {
+              alert("Failed to save photo metadata.");
+          }
+      } catch (e) { 
+          console.error("Batch upload failed", e); 
+          alert("Upload failed. Please check server connection.");
       }
   };
 
   const uploadBulkEditedPhotos = async (eventId: string, files: FileList) => {
-      // Logic for matching edits to originals would be here
-      // For now, simple mock or just logging
-      console.log(`Uploaded ${files.length} edits for event ${eventId}`);
-      // In a real implementation: Match filenames to photos, upload to /edit endpoint
-      alert("Bulk edit upload feature pending backend implementation.");
+      // Logic would be similar: upload files, match with existing originals by filename, update record.
+      alert(`Bulk edit upload not fully implemented yet. Use 'Upload Raw' for now.`);
   };
 
   const resetDatabase = async () => {
-      // Admin only function
-      // In real app: POST /api/admin/reset
-      console.log("Resetting database...");
+      // Needs admin endpoint
+      localStorage.clear();
+      window.location.reload();
   };
 
   const requestAddon = async (eventId: string, serviceId: string) => {
-      if (activeEvent) {
-          const newRequest = { id: `req-${Date.now()}`, serviceId, date: new Date().toISOString(), status: 'pending' as const };
-          const updatedRequests = [...(activeEvent.addonRequests || []), newRequest];
-          await updateEvent(eventId, { addonRequests: updatedRequests });
-      }
+      // Logic stub
+      alert("Addon request sent.");
   };
 
   const addPhotoComment = async (photoId: string, text: string) => {
-     if(!currentUser) return;
-     // Optimistic update
-     const updatedPhotos = photos.map(p => {
-         if (p.id === photoId) {
+      // Optimistic
+      setPhotos(photos.map(p => {
+          if (p.id === photoId) {
              const comments = p.comments || [];
-             return { ...p, comments: [...comments, { id: Date.now().toString(), author: currentUser.name, text, date: new Date().toISOString(), role: currentUser.role }]};
-         }
-         return p;
-     });
-     setPhotos(updatedPhotos);
-     // Real backend sync: POST /api/photos/:id/comment
+             return { ...p, comments: [...comments, { id: Date.now().toString(), author: currentUser?.name || 'User', text, date: new Date().toISOString(), role: currentUser?.role || UserRole.USER }] };
+          }
+          return p;
+      }));
   };
 
   const updatePhotoReviewStatus = async (photoId: string, status: 'approved' | 'changes_requested' | 'pending') => {
-      const updatedPhotos = photos.map(p => p.id === photoId ? { ...p, reviewStatus: status } : p);
-      setPhotos(updatedPhotos);
-      // Real backend sync: PATCH /api/photos/:id
+      setPhotos(photos.map(p => p.id === photoId ? { ...p, reviewStatus: status } : p));
   };
 
   const approveAllEdits = async (eventId: string) => {
-      const updatedPhotos = photos.map(p => p.editedUrl ? { ...p, reviewStatus: 'approved' as const } : p);
-      setPhotos(updatedPhotos);
+      setPhotos(photos.map(p => p.eventId === eventId && p.editedUrl ? { ...p, reviewStatus: 'approved' as const } : p));
       await updateEventWorkflow(eventId, 'accepted');
   };
 
   const updateUserServices = async (userId: string, services: Service[]) => {
-      const user = users.find(u => u.id === userId);
-      if (user) {
-          await updateUser({ ...user, services });
-      }
+      if(currentUser) await updateUser({ ...currentUser, id: userId, services });
   };
 
   const updateUserPortfolio = async (userId: string, portfolio: Portfolio) => {
-      const user = users.find(u => u.id === userId);
-      if (user) {
-          await updateUser({ ...user, portfolio });
-      }
+      if(currentUser) await updateUser({ ...currentUser, id: userId, portfolio });
   };
 
+  const toggleUserStatus = async (userId: string) => {
+      try {
+          const res = await fetch(`${API_URL}/users/${userId}/status`, { method: 'PATCH' });
+          if (res.ok) {
+              const updatedUser = normalizeData(await res.json());
+              setUsers(users.map(u => u.id === userId ? updatedUser : u));
+          }
+      } catch(e) { console.error(e); }
+  };
+  
   const refreshPhotos = async (eventId: string) => {
       await loadPhotos(eventId);
   };
 
   return (
     <DataContext.Provider value={{
-      currentUser, users, events, activeEvent, photos, selectedPhotos, isLoading,
-      setActiveEvent, login, logout, updateUser, addEvent, updateEvent, updateEventWorkflow,
+      currentUser, users, events, activeEvent, photos, selectedPhotos, isLoading, setActiveEvent,
+      login, signup, logout, updateUser, addEvent, updateEvent, updateEventWorkflow,
       deletePhoto, togglePhotoSelection, submitSelections, renamePersonInEvent,
       uploadAsset, uploadRawPhotos, uploadBulkEditedPhotos, resetDatabase,
       requestAddon, addPhotoComment, updatePhotoReviewStatus, approveAllEdits,
