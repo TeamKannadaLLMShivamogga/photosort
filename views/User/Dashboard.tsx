@@ -7,7 +7,7 @@ import {
 import { 
   TrendingUp, Star, Users, CheckCircle2, 
   Calendar, Camera, Clock, ArrowRight, Image as ImageIcon, Sparkles, Smile, Users as GroupIcon, Heart, CreditCard, RefreshCw,
-  AlertCircle, ChevronRight
+  AlertCircle, ChevronRight, MapPin, Timer
 } from 'lucide-react';
 import { useData } from '../../context/DataContext';
 import EventSelector from './EventSelector';
@@ -68,6 +68,16 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ onNavigate }) => {
       }
   };
 
+  const getDaysRemaining = (dateStr?: string) => {
+      if (!dateStr) return null;
+      const target = new Date(dateStr);
+      const today = new Date();
+      const diff = target.getTime() - today.getTime();
+      return Math.ceil(diff / (1000 * 3600 * 24));
+  };
+
+  const daysRemaining = getDaysRemaining(activeEvent.timeline?.deliveryEstimate);
+
   return (
     <div className="space-y-8 animate-in fade-in duration-500 max-w-7xl mx-auto">
       
@@ -82,8 +92,16 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ onNavigate }) => {
                 <div className="w-3 h-3 bg-current rounded-full relative"></div>
             </div>
             <span className="text-xs font-black uppercase tracking-widest">{getStatusText(activeEvent.selectionStatus)}</span>
-            {activeEvent.timeline?.deliveryEstimate && activeEvent.selectionStatus === 'editing' && (
-                <span className="text-[10px] font-bold opacity-80 border-l border-current/20 pl-3">Expected: {new Date(activeEvent.timeline.deliveryEstimate).toLocaleDateString()}</span>
+            {activeEvent.timeline?.deliveryEstimate && (
+                <div className="flex items-center gap-2 border-l border-current/20 pl-3">
+                    <span className="text-[10px] font-bold opacity-80">Deadline: {new Date(activeEvent.timeline.deliveryEstimate).toLocaleDateString()}</span>
+                    {daysRemaining !== null && (
+                        <span className={`text-[10px] font-black uppercase tracking-widest flex items-center gap-1 ${daysRemaining < 0 ? 'text-red-600' : ''}`}>
+                            <Timer className="w-3 h-3" />
+                            {daysRemaining < 0 ? `${Math.abs(daysRemaining)} DAYS OVERDUE` : `${daysRemaining} DAYS LEFT`}
+                        </span>
+                    )}
+                </div>
             )}
          </div>
          <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest opacity-60 group-hover:opacity-100 transition-opacity">
@@ -94,15 +112,29 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ onNavigate }) => {
       {/* Dashboard Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-5">
         <div className="flex items-center gap-5">
-          <div className="w-20 h-20 rounded-[2rem] overflow-hidden shadow-2xl border-4 border-white">
+          <div className="w-20 h-20 rounded-[2rem] overflow-hidden shadow-2xl border-4 border-white shrink-0">
             <img src={activeEvent.coverImage} className="w-full h-full object-cover" alt="" />
           </div>
           <div>
-            <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">{activeEvent.name}</h1>
-            <div className="flex items-center gap-2 mt-1 text-slate-400 font-bold text-sm">
-              <span>{new Date(activeEvent.date).toLocaleDateString()}</span>
-              <span className="w-1.5 h-1.5 bg-slate-200 rounded-full" />
-              <span>{activeEvent.photoCount} photos</span>
+            <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight leading-none">{activeEvent.name}</h1>
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mt-2">
+                <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-500 uppercase tracking-widest">
+                    <Calendar className="w-3.5 h-3.5 text-indigo-500" />
+                    <span>
+                        {new Date(activeEvent.date).toLocaleDateString()}
+                        {activeEvent.endDate ? ` - ${new Date(activeEvent.endDate).toLocaleDateString()}` : ''}
+                    </span>
+                </div>
+                {activeEvent.location && (
+                    <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-500 uppercase tracking-widest">
+                        <MapPin className="w-3.5 h-3.5 text-rose-500" />
+                        <span>{activeEvent.location}</span>
+                    </div>
+                )}
+                <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-500 uppercase tracking-widest">
+                    <ImageIcon className="w-3.5 h-3.5 text-emerald-500" />
+                    <span>{eventPhotos.length || activeEvent.photoCount} photos</span>
+                </div>
             </div>
           </div>
         </div>

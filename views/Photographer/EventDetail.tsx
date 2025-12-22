@@ -4,7 +4,7 @@ import {
   Settings, Upload, Image as ImageIcon, CheckSquare, 
   Share2, X, Clock, Download, FileJson, Calendar, ChevronLeft, Loader2,
   Edit2, Zap, ShieldCheck, FileType, Sparkles, Wand2, CreditCard, ChevronDown, FolderOpen,
-  Database, Activity, Plus, Users, Trash2, GitPullRequest, Lock, Unlock, Send, MessageCircle, AlertCircle, CheckCircle, UploadCloud, ChevronRight, AlertTriangle, Gift, Check, XCircle, MapPin
+  Database, Activity, Plus, Users, Trash2, GitPullRequest, Lock, Unlock, Send, MessageCircle, AlertCircle, CheckCircle, UploadCloud, ChevronRight, AlertTriangle, Gift, Check, XCircle, MapPin, UserMinus, Timer, User as UserIcon
 } from 'lucide-react';
 import { useData } from '../../context/DataContext';
 import GalleryView from '../../components/Gallery/GalleryView';
@@ -24,6 +24,7 @@ const PhotographerEventDetail: React.FC<{ onNavigate: (view: string) => void, in
   const [activeTab, setActiveTab] = useState<string>(initialTab || 'settings');
   
   const [isEditDetailsOpen, setIsEditDetailsOpen] = useState(false);
+  const [isAddClientModalOpen, setIsAddClientModalOpen] = useState(false);
   const [editForm, setEditForm] = useState<Partial<Event>>({});
   const [newClientForm, setNewClientForm] = useState({ name: '', email: '', phone: '' });
   
@@ -81,6 +82,7 @@ const PhotographerEventDetail: React.FC<{ onNavigate: (view: string) => void, in
     if (newClientForm.name && newClientForm.email) {
       await assignUserToEvent(activeEvent.id, newClientForm);
       setNewClientForm({ name: '', email: '', phone: '' });
+      setIsAddClientModalOpen(false);
     }
   };
 
@@ -250,9 +252,21 @@ const PhotographerEventDetail: React.FC<{ onNavigate: (view: string) => void, in
       }
   };
 
-  const pendingAction = getPendingAction(activeEvent.selectionStatus);
+  // Countdown Helper
+  const getDaysRemaining = (dateStr?: string) => {
+      if (!dateStr) return null;
+      const target = new Date(dateStr);
+      const today = new Date();
+      const diff = target.getTime() - today.getTime();
+      return Math.ceil(diff / (1000 * 3600 * 24));
+  };
 
+  const pendingAction = getPendingAction(activeEvent.selectionStatus);
   const pendingAddons = activeEvent.addonRequests?.filter(r => r.status === 'pending') || [];
+  const daysRemaining = getDaysRemaining(activeEvent.timeline?.deliveryEstimate);
+  
+  // Resolve assigned users
+  const assignedClientUsers = users.filter(u => activeEvent.assignedUsers?.includes(u.id));
 
   return (
     <div className="flex flex-col h-full bg-slate-50 -m-8 animate-in fade-in duration-500 relative">
@@ -288,14 +302,15 @@ const PhotographerEventDetail: React.FC<{ onNavigate: (view: string) => void, in
                         )}
                         <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-500 uppercase tracking-widest">
                             <ImageIcon className="w-3.5 h-3.5 text-emerald-500" />
-                            <span>{photos.length} Photos</span>
+                            {/* Dynamic Photo Count */}
+                            <span>{photos?.length || activeEvent.photoCount || 0} Photos</span>
                         </div>
                     </div>
                 </div>
             </div>
           </div>
           
-          {/* Status Card */}
+          {/* Status Card with Countdown */}
           <div className={`hidden md:flex items-center gap-4 px-5 py-2.5 rounded-2xl border transition-all ${getStatusColor(activeEvent.selectionStatus)} shadow-sm`}>
              <div className="flex flex-col">
                  <div className="flex items-center gap-2">
@@ -305,12 +320,20 @@ const PhotographerEventDetail: React.FC<{ onNavigate: (view: string) => void, in
                     </div>
                     <span className="text-[10px] font-black uppercase tracking-widest leading-none">{activeEvent.selectionStatus}</span>
                  </div>
-                 {pendingAction && (
-                     <div className="mt-1 flex items-center gap-1 text-[9px] font-bold opacity-80">
-                         <AlertTriangle className="w-3 h-3" />
-                         <span>Action: {pendingAction}</span>
-                     </div>
-                 )}
+                 <div className="flex flex-col mt-1">
+                    {pendingAction && (
+                        <div className="flex items-center gap-1 text-[9px] font-bold opacity-80">
+                            <AlertTriangle className="w-3 h-3" />
+                            <span>Action: {pendingAction}</span>
+                        </div>
+                    )}
+                    {daysRemaining !== null && (
+                        <div className={`flex items-center gap-1 text-[9px] font-bold mt-0.5 ${daysRemaining < 0 ? 'text-red-600' : 'opacity-80'}`}>
+                            <Timer className="w-3 h-3" />
+                            <span>{daysRemaining < 0 ? `${Math.abs(daysRemaining)} Days Overdue` : `${daysRemaining} Days Left`}</span>
+                        </div>
+                    )}
+                 </div>
              </div>
              {activeEvent.timeline?.deliveryEstimate && (
                  <div className="text-right border-l border-current/20 pl-4">
@@ -399,6 +422,32 @@ const PhotographerEventDetail: React.FC<{ onNavigate: (view: string) => void, in
                   <div className="space-y-1">
                     <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em]">Deliverables</p>
                     <p className="text-sm font-bold text-slate-800">{activeEvent.photoCount} High-Res Frames</p>
+                  </div>
+                </div>
+
+                <div className="pt-8 border-t border-slate-50">
+                  <div className="flex items-center justify-between mb-4">
+                      <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Authorized Clients</h4>
+                      <button onClick={() => setIsAddClientModalOpen(true)} className="flex items-center gap-1 text-[10px] font-black uppercase tracking-widest text-[#10B981] bg-emerald-50 px-3 py-1.5 rounded-lg hover:bg-emerald-100 transition-all">
+                          <Plus className="w-3 h-3" /> Add Client
+                      </button>
+                  </div>
+                  <div className="space-y-3">
+                      {assignedClientUsers.map(user => (
+                          <div key={user.id} className="p-3 bg-slate-50 rounded-2xl border border-slate-100 flex items-center justify-between">
+                              <div className="flex items-center gap-3">
+                                  <img src={user.avatar || `https://ui-avatars.com/api/?name=${user.name}`} className="w-8 h-8 rounded-full border border-white shadow-sm" alt="" />
+                                  <div>
+                                      <p className="text-xs font-bold text-slate-900">{user.name}</p>
+                                      <p className="text-[9px] text-slate-500 font-medium">{user.email}</p>
+                                  </div>
+                              </div>
+                              <button onClick={() => handleRemoveClient(user.id)} className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all" title="Revoke Access">
+                                  <UserMinus className="w-4 h-4" />
+                              </button>
+                          </div>
+                      ))}
+                      {assignedClientUsers.length === 0 && <p className="text-center text-slate-400 text-xs py-2 italic">No clients assigned yet.</p>}
                   </div>
                 </div>
 
@@ -674,22 +723,18 @@ const PhotographerEventDetail: React.FC<{ onNavigate: (view: string) => void, in
                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Event Name</label>
                 <input type="text" className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold outline-none text-slate-900" value={editForm.name || ''} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} />
               </div>
-              <div className="space-y-3">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 flex items-center gap-2">
-                  <Users className="w-3 h-3" /> Assigned Clients
-                </label>
-                {/* ... Client Add Logic ... */}
-                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3">
-                   <div className="flex items-center gap-2">
-                      <input type="text" placeholder="Name" className="flex-1 p-2 bg-white rounded-lg text-xs font-bold outline-none border border-transparent focus:border-[#10B981]" value={newClientForm.name} onChange={e => setNewClientForm({...newClientForm, name: e.target.value})}/>
-                      <input type="email" placeholder="Email" className="flex-1 p-2 bg-white rounded-lg text-xs font-bold outline-none border border-transparent focus:border-[#10B981]" value={newClientForm.email} onChange={e => setNewClientForm({...newClientForm, email: e.target.value})}/>
-                   </div>
-                   <div className="flex items-center gap-2">
-                      <input type="tel" placeholder="Phone" className="flex-1 p-2 bg-white rounded-lg text-xs font-bold outline-none border border-transparent focus:border-[#10B981]" value={newClientForm.phone} onChange={e => setNewClientForm({...newClientForm, phone: e.target.value})}/>
-                      <button onClick={handleAddClient} disabled={!newClientForm.name || !newClientForm.email} className="px-4 py-2 bg-slate-900 text-white rounded-lg text-[10px] font-black uppercase disabled:opacity-50">Add Access</button>
-                   </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Event Location</label>
+                <div className="relative">
+                    <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <input 
+                        type="text" 
+                        className="w-full pl-10 pr-4 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold outline-none text-slate-900" 
+                        value={editForm.location || ''} 
+                        onChange={(e) => setEditForm({ ...editForm, location: e.target.value })} 
+                        placeholder="e.g. Grand Hyatt, Mumbai"
+                    />
                 </div>
-                {/* ... Client List ... */}
               </div>
             </div>
             <div className="p-8 bg-slate-50 flex gap-4 mt-auto">
@@ -698,6 +743,31 @@ const PhotographerEventDetail: React.FC<{ onNavigate: (view: string) => void, in
             </div>
           </div>
         </div>
+      )}
+
+      {/* Add Client Modal */}
+      {isAddClientModalOpen && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+              <div className="bg-white rounded-[2rem] p-8 w-full max-w-sm space-y-4">
+                  <h3 className="font-black text-lg">Add Authorized Client</h3>
+                  <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-slate-400 uppercase">Client Name</label>
+                      <input type="text" placeholder="Full Name" className="w-full p-3 border rounded-xl" value={newClientForm.name} onChange={e => setNewClientForm({...newClientForm, name: e.target.value})} />
+                  </div>
+                  <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-slate-400 uppercase">Email Address</label>
+                      <input type="email" placeholder="client@example.com" className="w-full p-3 border rounded-xl" value={newClientForm.email} onChange={e => setNewClientForm({...newClientForm, email: e.target.value})} />
+                  </div>
+                  <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-slate-400 uppercase">Phone (Optional)</label>
+                      <input type="tel" placeholder="+91..." className="w-full p-3 border rounded-xl" value={newClientForm.phone} onChange={e => setNewClientForm({...newClientForm, phone: e.target.value})} />
+                  </div>
+                  <div className="flex gap-2 pt-4">
+                      <button onClick={() => setIsAddClientModalOpen(false)} className="flex-1 py-3 text-slate-500 font-bold">Cancel</button>
+                      <button onClick={handleAddClient} disabled={!newClientForm.name || !newClientForm.email} className="flex-1 py-3 bg-slate-900 text-white rounded-xl font-bold disabled:opacity-50">Add Access</button>
+                  </div>
+              </div>
+          </div>
       )}
 
       {/* New Sub Event Modal */}
