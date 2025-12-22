@@ -1,8 +1,12 @@
 
-import React, { useState, useRef } from 'react';
+import React, { useState } from 'react';
 import { useData } from '../../context/DataContext';
-import { ArrowLeft, Upload, Users, Calendar, Settings, Image as ImageIcon, CheckCircle, Clock, AlertTriangle, ChevronRight, Lock, Unlock, RefreshCw } from 'lucide-react';
-import { SelectionStatus } from '../../types';
+import { 
+  ArrowLeft, Upload, Users, Calendar, Settings, Image as ImageIcon, 
+  CheckCircle, Clock, AlertTriangle, ChevronRight, Lock, Unlock, 
+  RefreshCw, Plus, Trash2, Mail, Phone, MapPin, Save
+} from 'lucide-react';
+import { SelectionStatus, SubEvent } from '../../types';
 
 interface EventDetailProps {
   onNavigate: (view: string) => void;
@@ -10,8 +14,13 @@ interface EventDetailProps {
 }
 
 const PhotographerEventDetail: React.FC<EventDetailProps> = ({ onNavigate, initialTab = 'overview' }) => {
-  const { activeEvent, photos, updateEventWorkflow, updateEvent, setActiveEvent } = useData();
+  const { activeEvent, photos, updateEventWorkflow, updateEvent, users, setActiveEvent } = useData();
   const [activeTab, setActiveTab] = useState(initialTab);
+  
+  // Management States
+  const [newClient, setNewClient] = useState({ name: '', email: '', phone: '' });
+  const [newSubEvent, setNewSubEvent] = useState({ name: '', date: '', location: '' });
+  const [isAddingClient, setIsAddingClient] = useState(false);
 
   if (!activeEvent) return <div className="p-10 text-center">Event not found</div>;
 
@@ -28,6 +37,89 @@ const PhotographerEventDetail: React.FC<EventDetailProps> = ({ onNavigate, initi
           updateEventWorkflow(activeEvent.id, status);
       }
   };
+
+  // --- Client Management ---
+  const handleAddClient = async () => {
+    if (!newClient.name || !newClient.email) {
+      alert("Name and Email are required");
+      return;
+    }
+    
+    setIsAddingClient(true);
+    try {
+      // 1. Check if user exists or create
+      let targetUserId = '';
+      const existingUser = users.find(u => u.email === newClient.email);
+      
+      if (existingUser) {
+        targetUserId = existingUser.id;
+      } else {
+        // Create new user via API
+        const res = await fetch('/api/users', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                name: newClient.name,
+                email: newClient.email,
+                phone: newClient.phone,
+                role: 'USER',
+                avatar: `https://ui-avatars.com/api/?name=${newClient.name}&background=random`
+            })
+        });
+        if (res.ok) {
+            const created = await res.json();
+            targetUserId = created.id || created._id;
+        } else {
+            throw new Error("Failed to create user");
+        }
+      }
+      
+      // 2. Add to event
+      if (targetUserId) {
+        const currentAssigned = activeEvent.assignedUsers || [];
+        if (!currentAssigned.includes(targetUserId)) {
+             await updateEvent(activeEvent.id, { assignedUsers: [...currentAssigned, targetUserId] });
+        }
+        setNewClient({ name: '', email: '', phone: '' });
+      }
+    } catch (e) {
+      alert("Failed to add client. Please try again.");
+    } finally {
+      setIsAddingClient(false);
+    }
+  };
+
+  const handleRemoveClient = async (userId: string) => {
+      if (confirm("Remove this user from the event?")) {
+          const updated = activeEvent.assignedUsers.filter(id => id !== userId);
+          await updateEvent(activeEvent.id, { assignedUsers: updated });
+      }
+  };
+
+  // --- SubEvent Management ---
+  const handleAddSubEvent = async () => {
+      if (!newSubEvent.name || !newSubEvent.date) return;
+      
+      const newSub: SubEvent = {
+          id: `se-${Date.now()}`,
+          name: newSubEvent.name,
+          date: newSubEvent.date,
+          location: newSubEvent.location
+      };
+      
+      const updated = [...(activeEvent.subEvents || []), newSub];
+      await updateEvent(activeEvent.id, { subEvents: updated });
+      setNewSubEvent({ name: '', date: '', location: '' });
+  };
+
+  const handleRemoveSubEvent = async (subEventId: string) => {
+      if (confirm("Delete this sub-event?")) {
+          const updated = activeEvent.subEvents.filter(se => se.id !== subEventId);
+          await updateEvent(activeEvent.id, { subEvents: updated });
+      }
+  };
+
+  const assignedUserObjects = users.filter(u => activeEvent.assignedUsers.includes(u.id));
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500 pb-20 max-w-7xl mx-auto">
@@ -119,6 +211,57 @@ const PhotographerEventDetail: React.FC<EventDetailProps> = ({ onNavigate, initi
                   </div>
               </div>
 
+              {/* Sub-Events Management */}
+              <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm space-y-6">
+                 <div className="flex items-center justify-between">
+                     <h3 className="font-bold text-slate-900">Event Schedule & Sub-Events</h3>
+                     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{activeEvent.subEvents.length} Events</span>
+                 </div>
+
+                 <div className="space-y-3">
+                     {activeEvent.subEvents.map(sub => (
+                         <div key={sub.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                             <div className="flex items-center gap-4">
+                                 <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center text-indigo-600 shadow-sm">
+                                     <Calendar className="w-5 h-5" />
+                                 </div>
+                                 <div>
+                                     <p className="text-sm font-bold text-slate-900">{sub.name}</p>
+                                     <div className="flex items-center gap-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">
+                                         <span>{new Date(sub.date).toLocaleDateString()}</span>
+                                         {sub.location && <span>• {sub.location}</span>}
+                                     </div>
+                                 </div>
+                             </div>
+                             <button onClick={() => handleRemoveSubEvent(sub.id)} className="p-2 text-slate-400 hover:text-red-500 hover:bg-white rounded-xl transition-all">
+                                 <Trash2 className="w-4 h-4" />
+                             </button>
+                         </div>
+                     ))}
+                 </div>
+
+                 <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 flex flex-col sm:flex-row gap-3">
+                     <input 
+                        type="text" placeholder="Event Name (e.g. Sangeet)" 
+                        className="flex-1 p-3 bg-white rounded-xl text-xs font-bold outline-none"
+                        value={newSubEvent.name} onChange={e => setNewSubEvent({...newSubEvent, name: e.target.value})}
+                     />
+                     <input 
+                        type="date" 
+                        className="p-3 bg-white rounded-xl text-xs font-bold outline-none"
+                        value={newSubEvent.date} onChange={e => setNewSubEvent({...newSubEvent, date: e.target.value})}
+                     />
+                     <input 
+                        type="text" placeholder="Location"
+                        className="flex-1 p-3 bg-white rounded-xl text-xs font-bold outline-none"
+                        value={newSubEvent.location} onChange={e => setNewSubEvent({...newSubEvent, location: e.target.value})}
+                     />
+                     <button onClick={handleAddSubEvent} className="p-3 bg-slate-900 text-white rounded-xl hover:bg-black transition-colors">
+                         <Plus className="w-4 h-4" />
+                     </button>
+                 </div>
+              </div>
+
               {/* Stats Grid */}
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
                   <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm">
@@ -133,52 +276,58 @@ const PhotographerEventDetail: React.FC<EventDetailProps> = ({ onNavigate, initi
                       <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Approved</p>
                       <p className="text-2xl font-black text-green-600 mt-1">{approvedCount}</p>
                   </div>
-                  <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm">
-                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Changes Req</p>
-                      <p className="text-2xl font-black text-amber-500 mt-1">{changesRequestedCount}</p>
-                  </div>
-                  <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm col-span-2 sm:col-span-2">
-                      <div className="flex justify-between items-end">
-                        <div>
-                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Financials</p>
-                            <div className="flex items-baseline gap-1 mt-1">
-                                <span className="text-2xl font-black text-slate-900">₹{totalPaid.toLocaleString()}</span>
-                                <span className="text-xs font-bold text-slate-400">/ ₹{activeEvent.price?.toLocaleString()}</span>
-                            </div>
-                        </div>
-                        <div className="text-right">
-                             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Balance</p>
-                             <p className={`text-sm font-black ${balance > 0 ? 'text-red-500' : 'text-green-500'}`}>₹{balance.toLocaleString()}</p>
-                        </div>
-                      </div>
-                  </div>
               </div>
           </div>
 
           <div className="space-y-8">
-              {/* Client Info */}
+              {/* Client Access Management */}
               <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm space-y-6">
-                  <h3 className="font-bold text-slate-900">Client Details</h3>
+                  <div className="flex items-center justify-between">
+                     <h3 className="font-bold text-slate-900">Assigned Clients</h3>
+                     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{assignedUserObjects.length} Access</span>
+                  </div>
+
                   <div className="space-y-4">
-                      <div className="flex items-center gap-4">
-                          <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center font-black text-slate-400">
-                              {activeEvent.clientEmail ? activeEvent.clientEmail.charAt(0).toUpperCase() : 'C'}
+                      {assignedUserObjects.map(user => (
+                          <div key={user.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-2xl border border-slate-100">
+                              <div className="flex items-center gap-3 overflow-hidden">
+                                  <img src={user.avatar || `https://ui-avatars.com/api/?name=${user.name}`} className="w-8 h-8 rounded-full bg-white shadow-sm" alt="" />
+                                  <div className="min-w-0">
+                                      <p className="text-xs font-bold text-slate-900 truncate">{user.name}</p>
+                                      <p className="text-[9px] text-slate-400 truncate">{user.email}</p>
+                                  </div>
+                              </div>
+                              <button onClick={() => handleRemoveClient(user.id)} className="p-2 text-slate-400 hover:text-red-500 rounded-lg transition-colors">
+                                  <Trash2 className="w-3.5 h-3.5" />
+                              </button>
                           </div>
-                          <div>
-                              <p className="text-xs font-bold text-slate-900">{activeEvent.clientEmail}</p>
-                              <p className="text-[10px] text-slate-400">{activeEvent.clientPhone || 'No Phone'}</p>
-                          </div>
-                      </div>
-                      
-                      <div className="pt-4 border-t border-slate-50 space-y-2">
-                         <div className="flex justify-between text-xs">
-                             <span className="text-slate-500 font-medium">Event Plan</span>
-                             <span className="font-bold text-slate-900">{activeEvent.plan}</span>
-                         </div>
-                         <div className="flex justify-between text-xs">
-                             <span className="text-slate-500 font-medium">Optimization</span>
-                             <span className="font-bold text-slate-900">{activeEvent.optimizationSetting || 'Standard'}</span>
-                         </div>
+                      ))}
+                      {assignedUserObjects.length === 0 && (
+                          <p className="text-center text-xs text-slate-400 italic py-2">No users assigned yet.</p>
+                      )}
+                  </div>
+
+                  <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-3">
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Add New Client</p>
+                      <input 
+                         type="text" placeholder="Full Name" 
+                         className="w-full p-3 bg-white rounded-xl text-xs font-bold outline-none"
+                         value={newClient.name} onChange={e => setNewClient({...newClient, name: e.target.value})}
+                      />
+                      <input 
+                         type="email" placeholder="Email Address" 
+                         className="w-full p-3 bg-white rounded-xl text-xs font-bold outline-none"
+                         value={newClient.email} onChange={e => setNewClient({...newClient, email: e.target.value})}
+                      />
+                      <div className="flex gap-2">
+                        <input 
+                           type="tel" placeholder="Phone" 
+                           className="flex-1 p-3 bg-white rounded-xl text-xs font-bold outline-none"
+                           value={newClient.phone} onChange={e => setNewClient({...newClient, phone: e.target.value})}
+                        />
+                        <button disabled={isAddingClient} onClick={handleAddClient} className="px-4 bg-[#10B981] text-white rounded-xl font-bold hover:bg-[#059669] transition-colors disabled:opacity-50">
+                            <Plus className="w-4 h-4" />
+                        </button>
                       </div>
                   </div>
               </div>

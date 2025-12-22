@@ -19,7 +19,24 @@ const Sidebar: React.FC<SidebarProps> = ({ onNavigate, currentView, isOpen, onCl
   const { currentUser, logout, activeEvent } = useData();
 
   const getNavItems = () => {
-    if (currentUser?.role === UserRole.USER) {
+    if (currentUser?.role === UserRole.PHOTOGRAPHER) {
+      return [
+        { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+        { id: 'events', label: 'All Events', icon: Calendar },
+        { id: 'event-settings', label: 'Event Detail', icon: Info, hidden: !activeEvent },
+        { id: 'portfolio', label: 'Portfolio', icon: Briefcase },
+        { id: 'photographer-settings', label: 'Settings', icon: Settings }
+      ];
+    } else if (currentUser?.role === UserRole.ADMIN) {
+      return [
+        { id: 'admin-dashboard', label: 'Overview', icon: LayoutDashboard },
+        { id: 'admin-events', label: 'Global Events', icon: Calendar },
+        { id: 'admin-users', label: 'User Governance', icon: Users },
+        { id: 'admin-subscriptions', label: 'Subscriptions', icon: CreditCard },
+        { id: 'admin-settings', label: 'System Config', icon: Settings }
+      ];
+    } else {
+      // Default to USER role (handles 'USER' and potential casing mismatches)
       // Check for Album service (Story 31)
       const hasAlbumService = activeEvent?.selectedServices?.some(s => s.name.toLowerCase().includes('album'));
 
@@ -38,22 +55,6 @@ const Sidebar: React.FC<SidebarProps> = ({ onNavigate, currentView, isOpen, onCl
         { id: 'addons', label: 'Add-ons', icon: Gift, hidden: !activeEvent },
         { id: 'studio-profile', label: 'Studio Profile', icon: Briefcase, hidden: !activeEvent }, // New Link for User
         { id: 'profile-settings', label: 'Settings', icon: Settings }
-      ];
-    } else if (currentUser?.role === UserRole.PHOTOGRAPHER) {
-      return [
-        { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-        { id: 'events', label: 'All Events', icon: Calendar },
-        { id: 'event-settings', label: 'Event Detail', icon: Info, hidden: !activeEvent },
-        { id: 'portfolio', label: 'Portfolio', icon: Briefcase },
-        { id: 'photographer-settings', label: 'Settings', icon: Settings }
-      ];
-    } else {
-      return [
-        { id: 'admin-dashboard', label: 'Overview', icon: LayoutDashboard },
-        { id: 'admin-events', label: 'Global Events', icon: Calendar },
-        { id: 'admin-users', label: 'User Governance', icon: Users },
-        { id: 'admin-subscriptions', label: 'Subscriptions', icon: CreditCard },
-        { id: 'admin-settings', label: 'System Config', icon: Settings }
       ];
     }
   };
