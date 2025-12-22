@@ -1,6 +1,8 @@
+
 import React from 'react';
 import { useData } from '../../context/DataContext';
 import { Clock, Image as ImageIcon, Wallet, CheckCircle, AlertCircle, ArrowRight } from 'lucide-react';
+import EventSelector from './EventSelector';
 
 interface UserDashboardProps {
   onNavigate: (view: string) => void;
@@ -9,7 +11,10 @@ interface UserDashboardProps {
 const UserDashboard: React.FC<UserDashboardProps> = ({ onNavigate }) => {
   const { activeEvent, photos } = useData();
 
-  if (!activeEvent) return <div className="p-10 text-center text-slate-400">No active event selected.</div>;
+  // If no event selected, show selector immediately
+  if (!activeEvent) {
+      return <EventSelector />;
+  }
 
   const eventPhotos = photos.filter(p => p.eventId === activeEvent.id);
 
@@ -49,14 +54,23 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ onNavigate }) => {
            </div>
         </div>
         
-        {activeEvent.selectionStatus === 'open' && (
+        <div className="flex gap-3">
+             {/* Allow switching even from dashboard */}
              <button 
-                onClick={() => onNavigate('gallery')}
-                className="px-6 py-3 bg-[#10B981] text-white rounded-2xl font-black uppercase tracking-widest text-xs shadow-xl shadow-[#10B981]/20 hover:bg-[#059669] transition-all active:scale-95 flex items-center gap-2"
+                onClick={() => window.location.reload()} // Quick hack to reset state or could use setActiveEvent(null)
+                className="px-4 py-3 bg-white text-slate-500 border border-slate-200 rounded-2xl font-bold uppercase tracking-widest text-xs hover:bg-slate-50 transition-all"
              >
-                 Select Photos <ArrowRight className="w-4 h-4" />
+                 Switch Event
              </button>
-        )}
+             {activeEvent.selectionStatus === 'open' && (
+                <button 
+                    onClick={() => onNavigate('gallery')}
+                    className="px-6 py-3 bg-[#10B981] text-white rounded-2xl font-black uppercase tracking-widest text-xs shadow-xl shadow-[#10B981]/20 hover:bg-[#059669] transition-all active:scale-95 flex items-center gap-2"
+                >
+                    Select Photos <ArrowRight className="w-4 h-4" />
+                </button>
+             )}
+        </div>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
