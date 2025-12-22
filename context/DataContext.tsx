@@ -35,7 +35,6 @@ interface DataContextType {
   updateEventWorkflow: (eventId: string, status: SelectionStatus, deliveryEstimate?: string, note?: string) => Promise<void>;
   uploadEditedPhoto: (photoId: string, file: File) => Promise<void>;
   uploadBulkEditedPhotos: (eventId: string, files: FileList) => Promise<void>;
-  uploadRawPhotos: (eventId: string, files: FileList) => Promise<void>;
   addPhotoComment: (photoId: string, text: string) => Promise<void>;
   updatePhotoReviewStatus: (photoId: string, status: 'approved' | 'changes_requested') => Promise<void>;
   resolveComment: (photoId: string, commentId: string) => Promise<void>;
@@ -382,44 +381,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
   };
 
-  const uploadRawPhotos = async (eventId: string, files: FileList) => {
-      const photosData: any[] = [];
-      
-      // Since the backend expects a list of Photo objects for the "metadata" or just raw uploads
-      // The current backend endpoint `POST /api/events/{id}/photos` expects a JSON body `PhotoUploadRequest`.
-      // BUT for actual file uploads, we usually need a multipart endpoint.
-      // Assuming we modify the backend or use a utility that uploads assets then creates records.
-      // For this user story, let's assume we can post files to a multipart endpoint similar to bulk edit.
-      // However, looking at `master_main.txt`, `POST /api/events/{id}/photos` takes `PhotoUploadRequest` (JSON).
-      
-      // Workaround: We upload files to `uploadAsset` one by one (or parallely) and then send metadata to `create_photos`.
-      
-      try {
-          const uploadedUrls = await Promise.all(Array.from(files).map(f => uploadAsset(f)));
-          
-          const photosPayload = uploadedUrls.map(url => ({
-              url,
-              eventId,
-              isAiProcessed: false,
-              tags: [],
-              people: []
-          }));
-
-          const res = await fetch(`${API_URL}/events/${eventId}/photos`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ photos: photosPayload })
-          });
-
-          if (res.ok) {
-              await loadPhotos(eventId);
-          }
-      } catch (e) {
-          console.error("Failed to upload raw photos", e);
-          throw e;
-      }
-  };
-
   const addPhotoComment = async (photoId: string, text: string) => {
       if (!currentUser) return;
       const res = await fetch(`${API_URL}/photos/${photoId}/comment`, {
@@ -563,7 +524,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       login, logout, setActiveEvent, togglePhotoSelection, submitSelections,
       addEvent, updateEvent, deleteEvent, addUser, updateUser, deleteUser, addSubEvent, removeSubEvent,
       toggleUserStatus, refreshPhotos, recordPayment, assignUserToEvent, removeUserFromEvent,
-      updateEventWorkflow, uploadEditedPhoto, uploadBulkEditedPhotos, uploadRawPhotos, addPhotoComment, updatePhotoReviewStatus, resolveComment, approveAllEdits, deletePhoto,
+      updateEventWorkflow, uploadEditedPhoto, uploadBulkEditedPhotos, addPhotoComment, updatePhotoReviewStatus, resolveComment, approveAllEdits, deletePhoto,
       updateUserServices, updateUserPortfolio, requestAddon, updateAddonStatus, renamePersonInEvent,
       uploadAsset, resetDatabase
     }}>

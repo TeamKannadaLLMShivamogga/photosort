@@ -2,12 +2,12 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { 
   Grid2X2, Sparkles, User, Calendar, Tag, Check, Filter, 
-  X, ChevronRight, Star, CheckCircle2, Image as ImageIcon, RotateCcw, Trash2, Edit2, UploadCloud, Lock, Unlock, AlertCircle
+  X, ChevronRight, Star, CheckCircle2, Image as ImageIcon, RotateCcw, Trash2, Edit2, UploadCloud
 } from 'lucide-react';
 import { useData } from '../../context/DataContext';
 import { Photo } from '../../types';
 
-type TabType = 'all' | 'ai' | 'people' | 'events' | 'tags' | 'selected' | 'edited';
+type TabType = 'all' | 'ai' | 'people' | 'ceremony' | 'activity';
 
 interface GalleryViewProps {
   initialTab?: string;
@@ -20,19 +20,19 @@ const GalleryView: React.FC<GalleryViewProps> = ({ initialTab, isPhotographer, o
   const [activeTab, setActiveTab] = useState<TabType>('all');
   const [selectedFilters, setSelectedFilters] = useState<{
     people: string[];
-    events: string[];
-    tags: string[];
+    ceremony: string[];
+    activity: string[];
   }>({
     people: [],
-    events: [],
-    tags: []
+    ceremony: [],
+    activity: []
   });
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editPersonName, setEditPersonName] = useState<{old: string, new: string} | null>(null);
 
   useEffect(() => {
     if (initialTab) {
-      if (['all', 'ai', 'people', 'events', 'tags', 'selected', 'edited'].includes(initialTab)) {
+      if (['all', 'ai', 'people', 'ceremony', 'activity'].includes(initialTab)) {
         setActiveTab(initialTab as TabType);
       }
     }
@@ -56,8 +56,8 @@ const GalleryView: React.FC<GalleryViewProps> = ({ initialTab, isPhotographer, o
 
   const filterOptions = useMemo(() => ({
     people: Array.from(new Set(eventPhotos.flatMap(p => p.people))),
-    events: activeEvent?.subEvents.map(s => s.name) || [],
-    tags: Array.from(new Set(eventPhotos.map(p => p.category)))
+    ceremony: activeEvent?.subEvents.map(s => s.name) || [],
+    activity: Array.from(new Set(eventPhotos.map(p => p.category)))
   }), [eventPhotos, activeEvent]);
 
   const peopleThumbnails = useMemo(() => {
@@ -71,24 +71,19 @@ const GalleryView: React.FC<GalleryViewProps> = ({ initialTab, isPhotographer, o
 
   const filteredPhotos = useMemo(() => {
     let result = eventPhotos;
-    
-    // Tab Logic
     if (activeTab === 'ai') result = result.filter(p => p.isAiPick);
-    if (activeTab === 'selected') result = result.filter(p => p.isSelected);
-    if (activeTab === 'edited') result = result.filter(p => p.editedUrl);
-
-    // Filter Logic
+    
     if (selectedFilters.people.length > 0) {
       result = result.filter(p => p.people.some(person => selectedFilters.people.includes(person)));
     }
-    if (selectedFilters.events.length > 0) {
+    if (selectedFilters.ceremony.length > 0) {
       result = result.filter(p => {
-          const subEvent = activeEvent?.subEvents.find(s => selectedFilters.events.includes(s.name));
-          return (p.subEventId && subEvent && p.subEventId === subEvent.id) || (p.category && selectedFilters.events.includes(p.category));
+          const subEvent = activeEvent?.subEvents.find(s => selectedFilters.ceremony.includes(s.name));
+          return (p.subEventId && subEvent && p.subEventId === subEvent.id) || (p.category && selectedFilters.ceremony.includes(p.category));
       });
     }
-    if (selectedFilters.tags.length > 0) {
-      result = result.filter(p => selectedFilters.tags.includes(p.category));
+    if (selectedFilters.activity.length > 0) {
+      result = result.filter(p => selectedFilters.activity.includes(p.category));
     }
 
     return result;
@@ -110,25 +105,13 @@ const GalleryView: React.FC<GalleryViewProps> = ({ initialTab, isPhotographer, o
       }
   };
 
-  const getBaseTabs = () => {
-      const base = [
-        { id: 'all', label: 'All Photos', icon: Grid2X2 },
-        { id: 'ai', label: 'AI Picks', icon: Sparkles },
-        { id: 'people', label: 'People', icon: User },
-        { id: 'events', label: 'Events', icon: Calendar }, 
-        { id: 'tags', label: 'Tags', icon: Tag },
-      ];
-      
-      if (isPhotographer) {
-          base.push(
-              { id: 'selected', label: 'Selected', icon: CheckCircle2 },
-              { id: 'edited', label: 'Edited', icon: Edit2 }
-          );
-      }
-      return base;
-  };
-
-  const tabs = getBaseTabs();
+  const tabs: {id: TabType, label: string, icon: any}[] = [
+    { id: 'all', label: 'All', icon: Grid2X2 },
+    { id: 'ai', label: 'AI', icon: Sparkles },
+    { id: 'people', label: 'People', icon: User },
+    { id: 'ceremony', label: 'Sub-Events', icon: Calendar }, 
+    { id: 'activity', label: 'Activity', icon: Tag },
+  ];
 
   return (
     <div className="flex flex-col h-full bg-slate-50 animate-in fade-in duration-300">
@@ -138,7 +121,7 @@ const GalleryView: React.FC<GalleryViewProps> = ({ initialTab, isPhotographer, o
             {tabs.map(tab => (
               <button
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id as TabType)}
+                onClick={() => setActiveTab(tab.id)}
                 className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-[10px] font-bold whitespace-nowrap transition-all ${
                   activeTab === tab.id 
                     ? 'bg-slate-900 text-white shadow-md' 
@@ -151,7 +134,7 @@ const GalleryView: React.FC<GalleryViewProps> = ({ initialTab, isPhotographer, o
             ))}
           </div>
           
-          {isPhotographer && activeTab === 'all' && onUploadClick && (
+          {isPhotographer && onUploadClick && (
               <button 
                   onClick={onUploadClick}
                   className="flex items-center gap-2 px-4 py-2 bg-[#10B981] hover:bg-[#059669] text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-md active:scale-95 transition-all ml-2 whitespace-nowrap"
@@ -162,7 +145,7 @@ const GalleryView: React.FC<GalleryViewProps> = ({ initialTab, isPhotographer, o
         </div>
 
         <div className="flex items-center justify-between">
-            {['people', 'events', 'tags'].includes(activeTab) && (
+            {activeTab !== 'all' && activeTab !== 'ai' && (
             <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-1">
                 {filterOptions[activeTab as keyof typeof filterOptions].slice(0, 8).map(val => (
                 <div key={val} className="relative group/chip">
@@ -186,8 +169,8 @@ const GalleryView: React.FC<GalleryViewProps> = ({ initialTab, isPhotographer, o
                         </div>
                         )}
                         <span>{val}</span>
-                        {activeTab === 'events' && (
-                            <span className={`text-[9px] font-bold ${selectedFilters.events.includes(val) ? 'text-indigo-400' : 'text-slate-400'}`}>
+                        {activeTab === 'ceremony' && (
+                            <span className={`text-[9px] font-bold ${selectedFilters.ceremony.includes(val) ? 'text-indigo-400' : 'text-slate-400'}`}>
                                 ({subEventCounts[val] || 0})
                             </span>
                         )}
@@ -231,73 +214,36 @@ const GalleryView: React.FC<GalleryViewProps> = ({ initialTab, isPhotographer, o
                 }`}
               >
                 <img 
-                  src={activeTab === 'edited' && photo.editedUrl ? photo.editedUrl : photo.url} 
+                  src={photo.url} 
                   className={`w-full h-full object-cover transition-transform duration-500 ${selectedPhotos.has(photo.id) ? 'opacity-80' : ''}`} 
                   alt="" 
                   loading="lazy"
                 />
                 
-                {/* AI Pick Indicator */}
-                {photo.isAiPick && activeTab !== 'ai' && (
+                {photo.isAiPick && (
                   <div className="absolute top-1.5 left-1.5 p-0.5 bg-indigo-600/80 text-white rounded shadow-sm backdrop-blur-sm">
                     <Star className="w-2.5 h-2.5 fill-current" />
                   </div>
                 )}
 
-                {/* Selection Checkmark */}
                 <div className={`absolute top-1.5 right-1.5 p-1 rounded-full transition-all duration-300 ${
                   selectedPhotos.has(photo.id) ? 'bg-indigo-600 text-white scale-110 shadow-lg' : 'bg-black/20 text-white opacity-0 group-hover:opacity-100'
                 }`}>
                   <Check className="w-3 h-3" />
                 </div>
 
-                {/* Photographer Specific Overlays */}
                 {isPhotographer && (
-                    <>
-                        {/* Selected Tab: Lock Status */}
-                        {activeTab === 'selected' && (
-                            <div className="absolute bottom-1.5 left-1.5">
-                                {activeEvent?.selectionStatus === 'open' ? (
-                                    <div className="bg-green-500/90 text-white p-1 rounded-full shadow-lg" title="Unlocked">
-                                        <Unlock className="w-3 h-3" />
-                                    </div>
-                                ) : (
-                                    <div className="bg-amber-500/90 text-white p-1 rounded-full shadow-lg" title="Locked">
-                                        <Lock className="w-3 h-3" />
-                                    </div>
-                                )}
-                            </div>
-                        )}
-
-                        {/* Edited Tab: Review Status */}
-                        {activeTab === 'edited' && (
-                            <div className="absolute bottom-1.5 right-1.5">
-                                {photo.reviewStatus === 'approved' ? (
-                                    <div className="bg-green-500/90 text-white px-2 py-0.5 rounded-full shadow-lg text-[8px] font-black uppercase tracking-wider flex items-center gap-1">
-                                        <CheckCircle2 className="w-2.5 h-2.5" /> Finalised
-                                    </div>
-                                ) : (
-                                    <div className="bg-indigo-500/90 text-white px-2 py-0.5 rounded-full shadow-lg text-[8px] font-black uppercase tracking-wider flex items-center gap-1">
-                                        <AlertCircle className="w-2.5 h-2.5" /> In Review
-                                    </div>
-                                )}
-                            </div>
-                        )}
-
-                        {/* Delete Action (Except in read-only AI tab) */}
-                        {activeTab !== 'ai' && activeTab !== 'selected' && activeTab !== 'edited' && (
-                            <button 
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    if (photo.isSelected) return; // Prevent deleting selected photos accidentally
-                                    if (confirm("Delete this photo permanently?")) deletePhoto(photo.id);
-                                }}
-                                className="absolute bottom-1.5 right-1.5 p-1.5 bg-white text-rose-500 rounded-full shadow-lg opacity-0 group-hover:opacity-100 hover:bg-rose-50 transition-all z-20 active:scale-90"
-                            >
-                                <Trash2 className="w-3 h-3" />
-                            </button>
-                        )}
-                    </>
+                  <button 
+                    onClick={(e) => {
+                       e.stopPropagation();
+                       if (photo.isSelected) return;
+                       if (activeEvent?.selectionStatus !== 'open') return;
+                       if (confirm("Delete this photo permanently?")) deletePhoto(photo.id);
+                    }}
+                    className="absolute bottom-1.5 right-1.5 p-1.5 bg-white text-rose-500 rounded-full shadow-lg opacity-0 group-hover:opacity-100 hover:bg-rose-50 transition-all z-20 active:scale-90"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                  </button>
                 )}
               </div>
             ))}
@@ -310,7 +256,7 @@ const GalleryView: React.FC<GalleryViewProps> = ({ initialTab, isPhotographer, o
         )}
       </div>
 
-      {selectedPhotos.size > 0 && activeEvent?.selectionStatus === 'open' && !isPhotographer && (
+      {selectedPhotos.size > 0 && activeEvent?.selectionStatus === 'open' && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 px-4 sm:px-6 py-3 bg-slate-900 text-white rounded-[1.5rem] sm:rounded-3xl shadow-2xl flex items-center gap-4 sm:gap-8 z-40 animate-in fade-in slide-in-from-bottom-6 duration-300 w-[90%] sm:w-auto justify-between">
           <div className="flex flex-col sm:border-r border-slate-700 sm:pr-8">
             <span className="text-[11px] sm:text-[12px] font-black tracking-tight">{selectedPhotos.size} SELECTED</span>
@@ -356,7 +302,7 @@ const GalleryView: React.FC<GalleryViewProps> = ({ initialTab, isPhotographer, o
                         )}
                       </div>
                       <span className="text-[10px] font-bold text-center truncate w-full">{val}</span>
-                      {activeTab === 'events' && (
+                      {activeTab === 'ceremony' && (
                         <span className="text-[9px] font-bold text-slate-400">({subEventCounts[val] || 0})</span>
                       )}
                     </button>

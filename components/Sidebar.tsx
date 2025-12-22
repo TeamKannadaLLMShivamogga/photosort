@@ -44,7 +44,6 @@ const Sidebar: React.FC<SidebarProps> = ({ onNavigate, currentView, isOpen, onCl
         { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
         { id: 'events', label: 'All Events', icon: Calendar },
         { id: 'event-settings', label: 'Event Detail', icon: Info, hidden: !activeEvent },
-        { id: 'event-gallery', label: 'Event Gallery', icon: ImageIcon, hidden: !activeEvent },
         { id: 'portfolio', label: 'Portfolio', icon: Briefcase },
         { id: 'photographer-settings', label: 'Settings', icon: Settings }
       ];
@@ -90,8 +89,7 @@ const Sidebar: React.FC<SidebarProps> = ({ onNavigate, currentView, isOpen, onCl
           </button>
         </div>
 
-        {/* Enable Event Switcher for both User and Photographer roles */}
-        {(currentUser?.role === UserRole.USER || currentUser?.role === UserRole.PHOTOGRAPHER) && <EventSwitcher />}
+        {currentUser?.role === UserRole.USER && <EventSwitcher />}
 
         <nav className="flex-1 px-4 py-6 space-y-1 overflow-y-auto no-scrollbar">
           {navItems.map((item: any) => {
