@@ -81,7 +81,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const refreshUsers = async () => {
       try {
-          const res = await fetch(`${API_URL}/users`);
+          const res = await fetch(`${API_URL}/users?t=${Date.now()}`);
           if (res.ok) {
               const rawUsers = await res.json();
               setUsers(Array.isArray(rawUsers) ? rawUsers.map(normalizeData) : []);
@@ -99,8 +99,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       try {
         const [usersRes, eventsRes] = await Promise.all([
-          fetch(`${API_URL}/users`),
-          fetch(`${API_URL}/events`)
+          fetch(`${API_URL}/users?t=${Date.now()}`),
+          fetch(`${API_URL}/events?t=${Date.now()}`)
         ]);
         
         const rawUsersData = await usersRes.json();
@@ -144,7 +144,13 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const loadPhotos = async (eventId: string) => {
       try {
-        const res = await fetch(`${API_URL}/events/${eventId}/photos`);
+        // Added cache busting timestamp and no-cache header
+        const res = await fetch(`${API_URL}/events/${eventId}/photos?t=${Date.now()}`, {
+            headers: {
+                'Cache-Control': 'no-cache',
+                'Pragma': 'no-cache'
+            }
+        });
         if (!res.ok) throw new Error("Backend unavailable for photos");
         const rawData = await res.json();
         const data = Array.isArray(rawData) ? rawData.map(normalizeData) : [];
@@ -417,7 +423,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
       if(res.ok) {
           await loadPhotos(eventId);
-          const updatedEventRes = await fetch(`${API_URL}/events`);
+          const updatedEventRes = await fetch(`${API_URL}/events?t=${Date.now()}`);
           const rawEventsData = await updatedEventRes.json();
           const eventsData = Array.isArray(rawEventsData) ? rawEventsData.map(normalizeData) : [];
           setEvents(eventsData);
