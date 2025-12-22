@@ -513,6 +513,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           // Prepare payload for backend to create photo records
           const photosPayload = urls.map(url => ({
               url,
+              eventId,
               tags: [],
               people: [],
               isAiPick: false,

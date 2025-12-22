@@ -220,6 +220,9 @@ class AddonRequestInput(BaseModel):
 class AddonStatusUpdate(BaseModel):
     status: AddonStatus
 
+class PhotoUploadRequest(BaseModel):
+    photos: List[Photo]
+
 # --- Startup/Seeding ---
 
 async def seed_data():
@@ -568,37 +571,30 @@ async def get_event_photos(id: str):
     return await db.photos.find({"eventId": id}).to_list(2000)
 
 @app.post("/api/events/{id}/photos", response_model=List[Photo])
-async def upload_photos(id: str, subEventId: Optional[str] = Form(None), files: List[UploadFile] = File(...), background_tasks: BackgroundTasks = None):
-    saved = []
-    event_dir = UPLOAD_DIR / id
-    event_dir.mkdir(parents=True, exist_ok=True)
-    for file in files:
-        ext = os.path.splitext(file.filename)[1] or ".jpg"
-        fname = f"{uuid.uuid4()}{ext}"
-        fpath = event_dir / fname
-        content = await file.read()
-        with open(fpath, "wb") as f: f.write(content)
-        url = f"/uploads/{id}/{fname}"
-        saved.append({
-            "url": url, 
-            "eventId": id, 
-            "subEventId": subEventId, 
-            "tags": [], 
-            "people": [],
-            "isAiPick": False, 
-            "quality": "medium", 
-            "isSelected": False, 
-            "isAiProcessed": False,
-            "originalSize": len(content), 
-            "optimizedSize": 0,
-            "originalFilename": file.filename 
-        })
-    if not saved: return []
-    res = await db.photos.insert_many(saved)
+async def upload_photos(id: str, payload: PhotoUploadRequest, background_tasks: BackgroundTasks):
+    photos_data = []
+    for p in payload.photos:
+        p_dict = p.model_dump(by_alias=True, exclude=["id"])
+        # Ensure strict typing
+        p_dict["eventId"] = id
+        p_dict["isAiProcessed"] = False 
+        photos_data.append(p_dict)
+    
+    if not photos_data:
+        return []
+
+    result = await db.photos.insert_many(photos_data)
+    
+    # Update event count
     count = await db.photos.count_documents({"eventId": id})
     await db.events.update_one({"_id": ObjectId(id)}, {"$set": {"photoCount": count}})
-    if background_tasks: background_tasks.add_task(trigger_ai_service, id)
-    return await db.photos.find({"_id": {"$in": res.inserted_ids}}).to_list(None)
+
+    # Trigger AI Service
+    background_tasks.add_task(trigger_ai_service, id)
+
+    # Fetch created photos
+    created_photos = await db.photos.find({"_id": {"$in": result.inserted_ids}}).to_list(None)
+    return created_photos
 
 @app.post("/api/events/{id}/photos/bulk-edit", response_model=List[Photo])
 async def bulk_upload_edits(id: str, files: List[UploadFile] = File(...)):
