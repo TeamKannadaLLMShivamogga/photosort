@@ -44,6 +44,7 @@ const Sidebar: React.FC<SidebarProps> = ({ onNavigate, currentView, isOpen, onCl
         { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
         { id: 'events', label: 'All Events', icon: Calendar },
         { id: 'event-settings', label: 'Event Detail', icon: Info, hidden: !activeEvent },
+        { id: 'event-gallery', label: 'Event Gallery', icon: ImageIcon, hidden: !activeEvent },
         { id: 'portfolio', label: 'Portfolio', icon: Briefcase },
         { id: 'photographer-settings', label: 'Settings', icon: Settings }
       ];

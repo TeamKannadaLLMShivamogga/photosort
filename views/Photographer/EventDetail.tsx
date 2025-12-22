@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { useData } from '../../context/DataContext';
-import { ArrowLeft, Upload, Users, Calendar, Settings, Image as ImageIcon, CheckCircle, Clock, AlertTriangle, ChevronRight, Lock, Unlock, RefreshCw } from 'lucide-react';
+import { ArrowLeft, Upload, Users, Calendar, Settings, Image as ImageIcon, CheckCircle, Clock, AlertTriangle, ChevronRight, Lock, Unlock, RefreshCw, Plus, History, X } from 'lucide-react';
 import { SelectionStatus } from '../../types';
 
 interface EventDetailProps {
@@ -9,10 +9,15 @@ interface EventDetailProps {
 }
 
 const PhotographerEventDetail: React.FC<EventDetailProps> = ({ onNavigate, initialTab = 'overview' }) => {
-  const { activeEvent, photos, updateEventWorkflow, updateEvent, uploadBulkEditedPhotos, setActiveEvent } = useData();
+  const { activeEvent, photos, updateEventWorkflow, updateEvent, uploadBulkEditedPhotos, setActiveEvent, recordPayment } = useData();
   const [activeTab, setActiveTab] = useState(initialTab);
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Payment UI States
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [paymentForm, setPaymentForm] = useState({ amount: '', date: new Date().toISOString().split('T')[0] });
 
   if (!activeEvent) return <div className="p-10 text-center">Event not found</div>;
 
@@ -51,6 +56,17 @@ const PhotographerEventDetail: React.FC<EventDetailProps> = ({ onNavigate, initi
   const advanceWorkflow = (status: SelectionStatus) => {
       if (confirm(`Advance workflow status to ${status}?`)) {
           updateEventWorkflow(activeEvent.id, status);
+      }
+  };
+
+  const handleAddPayment = async () => {
+      const amount = parseFloat(paymentForm.amount);
+      if (amount && amount > 0) {
+          await recordPayment(activeEvent.id, amount, paymentForm.date);
+          setShowPaymentModal(false);
+          setPaymentForm({ amount: '', date: new Date().toISOString().split('T')[0] });
+      } else {
+          alert("Please enter a valid amount.");
       }
   };
 
@@ -178,8 +194,10 @@ const PhotographerEventDetail: React.FC<EventDetailProps> = ({ onNavigate, initi
                       <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Changes Req</p>
                       <p className="text-2xl font-black text-amber-500 mt-1">{changesRequestedCount}</p>
                   </div>
-                  <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm col-span-2 sm:col-span-2">
-                      <div className="flex justify-between items-end">
+                  
+                  {/* Financials Card */}
+                  <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm col-span-2 sm:col-span-2 relative group">
+                      <div className="flex justify-between items-start mb-4">
                         <div>
                             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Financials</p>
                             <div className="flex items-baseline gap-1 mt-1">
@@ -187,10 +205,18 @@ const PhotographerEventDetail: React.FC<EventDetailProps> = ({ onNavigate, initi
                                 <span className="text-xs font-bold text-slate-400">/ ₹{activeEvent.price?.toLocaleString()}</span>
                             </div>
                         </div>
-                        <div className="text-right">
-                             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Balance</p>
-                             <p className={`text-sm font-black ${balance > 0 ? 'text-red-500' : 'text-green-500'}`}>₹{balance.toLocaleString()}</p>
+                        <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                             <button onClick={() => setShowHistoryModal(true)} className="p-2 bg-slate-50 hover:bg-slate-100 rounded-xl text-slate-400 hover:text-slate-600 transition-colors" title="View History">
+                                 <History className="w-4 h-4" />
+                             </button>
+                             <button onClick={() => setShowPaymentModal(true)} className="p-2 bg-indigo-50 hover:bg-indigo-100 rounded-xl text-indigo-600 transition-colors" title="Add Payment">
+                                 <Plus className="w-4 h-4" />
+                             </button>
                         </div>
+                      </div>
+                      <div className="text-right border-t border-slate-50 pt-2 flex justify-between items-center">
+                             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Balance Due</p>
+                             <p className={`text-sm font-black ${balance > 0 ? 'text-red-500' : 'text-green-500'}`}>₹{balance.toLocaleString()}</p>
                       </div>
                   </div>
               </div>
@@ -243,6 +269,91 @@ const PhotographerEventDetail: React.FC<EventDetailProps> = ({ onNavigate, initi
                </div>
           </div>
       </div>
+
+      {/* Add Payment Modal */}
+      {showPaymentModal && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+              <div className="bg-white rounded-[2rem] w-full max-w-sm p-8 shadow-2xl animate-in fade-in zoom-in-95 duration-200 space-y-6">
+                  <div className="flex justify-between items-center">
+                      <h3 className="text-xl font-black text-slate-900 uppercase tracking-tight">Record Payment</h3>
+                      <button onClick={() => setShowPaymentModal(false)} className="p-2 hover:bg-slate-50 rounded-full text-slate-400">
+                          <X className="w-5 h-5" />
+                      </button>
+                  </div>
+                  <div className="space-y-4">
+                      <div className="space-y-2">
+                          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Amount (₹)</label>
+                          <input 
+                              type="number" 
+                              className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-slate-900 outline-none focus:ring-2 focus:ring-indigo-100"
+                              placeholder="0.00"
+                              value={paymentForm.amount}
+                              onChange={(e) => setPaymentForm({...paymentForm, amount: e.target.value})}
+                          />
+                      </div>
+                      <div className="space-y-2">
+                          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Date</label>
+                          <input 
+                              type="date" 
+                              className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-slate-900 outline-none focus:ring-2 focus:ring-indigo-100"
+                              value={paymentForm.date}
+                              onChange={(e) => setPaymentForm({...paymentForm, date: e.target.value})}
+                          />
+                      </div>
+                      <button 
+                          onClick={handleAddPayment}
+                          className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-black uppercase tracking-widest text-xs hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-600/20 active:scale-95"
+                      >
+                          Save Record
+                      </button>
+                  </div>
+              </div>
+          </div>
+      )}
+
+      {/* Payment History Modal */}
+      {showHistoryModal && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+              <div className="bg-white rounded-[2rem] w-full max-w-md p-8 shadow-2xl animate-in fade-in zoom-in-95 duration-200 flex flex-col max-h-[80vh]">
+                  <div className="flex justify-between items-center mb-6">
+                      <h3 className="text-xl font-black text-slate-900 uppercase tracking-tight">Payment History</h3>
+                      <button onClick={() => setShowHistoryModal(false)} className="p-2 hover:bg-slate-50 rounded-full text-slate-400">
+                          <X className="w-5 h-5" />
+                      </button>
+                  </div>
+                  
+                  <div className="flex-1 overflow-y-auto no-scrollbar space-y-3">
+                      {activeEvent.paymentHistory && activeEvent.paymentHistory.length > 0 ? (
+                          activeEvent.paymentHistory.slice().reverse().map((record, idx) => (
+                              <div key={idx} className="flex justify-between items-center p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                                  <div className="flex items-center gap-3">
+                                      <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center text-green-500 shadow-sm">
+                                          <CheckCircle className="w-5 h-5" />
+                                      </div>
+                                      <div>
+                                          <p className="text-xs font-bold text-slate-900">Payment Received</p>
+                                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{new Date(record.date).toLocaleDateString()}</p>
+                                      </div>
+                                  </div>
+                                  <span className="text-lg font-black text-slate-900">₹{record.amount.toLocaleString()}</span>
+                              </div>
+                          ))
+                      ) : (
+                          <div className="py-10 text-center text-slate-400">
+                              <p className="text-xs font-bold uppercase tracking-widest">No payments recorded</p>
+                          </div>
+                      )}
+                  </div>
+
+                  <div className="pt-6 border-t border-slate-100 mt-4">
+                      <div className="flex justify-between items-center">
+                          <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">Total Collected</span>
+                          <span className="text-2xl font-black text-indigo-600">₹{totalPaid.toLocaleString()}</span>
+                      </div>
+                  </div>
+              </div>
+          </div>
+      )}
     </div>
   );
 };

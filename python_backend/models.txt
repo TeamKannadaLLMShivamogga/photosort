@@ -42,6 +42,12 @@ class AddonRequest(BaseModel):
     date: datetime = Field(default_factory=datetime.now)
     status: AddonStatus = 'pending'
 
+class PaymentRecord(BaseModel):
+    id: str
+    amount: float
+    date: datetime
+    recordedBy: Optional[str] = None
+
 class FaceAnalysis(BaseModel):
     num_smiling: Optional[int] = 0
     all_smiling: Optional[bool] = False
@@ -154,6 +160,7 @@ class Event(MongoBaseModel):
     price: Optional[float] = 0.0
     paidAmount: Optional[float] = 0.0
     paymentStatus: PaymentStatus = 'pending'
+    paymentHistory: List[PaymentRecord] = []
     plan: EventPlan = 'BASIC'
     clientEmail: Optional[str] = None
     clientPhone: Optional[str] = None

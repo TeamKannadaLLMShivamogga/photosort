@@ -21,7 +21,7 @@ import {
 } from 'lucide-react';
 
 const AppContent: React.FC = () => {
-  const { currentUser, activeEvent, login, updateUser, uploadAsset } = useData();
+  const { currentUser, activeEvent, login, updateUser, uploadAsset, uploadRawPhotos } = useData();
   const [currentView, setCurrentView] = useState('dashboard');
   const [viewParams, setViewParams] = useState<any>(null); // State for navigation parameters
   const [email, setEmail] = useState('');
@@ -33,9 +33,11 @@ const AppContent: React.FC = () => {
   const [familyMembers, setFamilyMembers] = useState<FamilyMember[]>([]);
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const [isUploadingFamily, setIsUploadingFamily] = useState(false);
+  const [isUploadingRaw, setIsUploadingRaw] = useState(false);
   
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const familyMemberInputRef = useRef<HTMLInputElement>(null);
+  const rawUploadInputRef = useRef<HTMLInputElement>(null);
   const [currentFamilyMemberId, setCurrentFamilyMemberId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -81,6 +83,21 @@ const AppContent: React.FC = () => {
         setIsUploadingAvatar(false);
       }
     }
+  };
+
+  const handleRawUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+      if (e.target.files && e.target.files.length > 0 && activeEvent) {
+          setIsUploadingRaw(true);
+          try {
+              await uploadRawPhotos(activeEvent.id, e.target.files);
+              alert('Upload successful!');
+          } catch(err) {
+              alert('Failed to upload photos.');
+          } finally {
+              setIsUploadingRaw(false);
+              if (rawUploadInputRef.current) rawUploadInputRef.current.value = '';
+          }
+      }
   };
 
   const addFamilyMember = () => {
@@ -186,6 +203,32 @@ const AppContent: React.FC = () => {
           ? <PhotographerDashboard onNavigate={handleNavigate} /> 
           : <UserDashboard onNavigate={handleNavigate} />;
       case 'gallery': return <GalleryView initialTab={viewParams?.tab} />;
+      case 'event-gallery': 
+        return (
+            <>
+                <GalleryView 
+                    initialTab={viewParams?.tab} 
+                    isPhotographer={true} 
+                    onUploadClick={() => rawUploadInputRef.current?.click()} 
+                />
+                <input 
+                    type="file" 
+                    multiple 
+                    accept="image/*" 
+                    ref={rawUploadInputRef} 
+                    className="hidden" 
+                    onChange={handleRawUpload} 
+                />
+                {isUploadingRaw && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+                        <div className="bg-white p-8 rounded-3xl flex flex-col items-center gap-4">
+                            <Loader2 className="w-10 h-10 animate-spin text-indigo-600" />
+                            <p className="font-bold text-slate-900">Uploading Photos...</p>
+                        </div>
+                    </div>
+                )}
+            </>
+        );
       case 'selections': return <UserSelections />;
       case 'addons': return <UserAddons />;
       case 'album': return <UserAlbum />;
