@@ -277,7 +277,6 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const uploadAsset = async (file: File): Promise<string> => {
       // In a real app, this would upload to S3/Cloudinary or the backend /upload endpoint
-      // Here we assume the backend handles multipart upload
       const formData = new FormData();
       formData.append('file', file);
       
@@ -296,15 +295,18 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       for (let i = 0; i < files.length; i++) {
           const file = files[i];
           // We assume a dedicated endpoint or reuse generic one
-          // For bulk efficiency, usually we upload files and backend creates records
-          // Here we follow the existing pattern: upload file -> get URL -> create record
           const formData = new FormData();
           formData.append('file', file);
           const res = await fetch(`${API_URL}/events/${eventId}/upload`, { method: 'POST', body: formData });
+          if (!res.ok) {
+              console.error(`Failed to upload file ${file.name}`);
+              continue;
+          }
           const data = await res.json();
           
           photoObjects.push({
               url: data.url,
+              eventId: eventId, // Critical: Required by Backend Validation
               tags: [],
               people: [],
               category: 'General',
@@ -314,17 +316,25 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           });
       }
       
-      await fetch(`${API_URL}/events/${eventId}/photos`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ photos: photoObjects })
-      });
+      if (photoObjects.length > 0) {
+          const batchRes = await fetch(`${API_URL}/events/${eventId}/photos`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ photos: photoObjects })
+          });
+          
+          if (!batchRes.ok) {
+              const errorText = await batchRes.text();
+              console.error("Batch creation failed:", errorText);
+              throw new Error("Failed to create photo records");
+          }
+      }
+      
       await fetchPhotos(eventId);
   };
 
   const uploadBulkEditedPhotos = async (eventId: string, files: FileList) => {
       // Implementation for edits would involve matching filenames
-      // Similar to uploadRawPhotos but updating 'editedUrl'
       console.log("Bulk edit upload not fully implemented in mock.");
   };
 
