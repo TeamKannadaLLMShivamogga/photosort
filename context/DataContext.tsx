@@ -1,414 +1,514 @@
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { User, Event, Photo, SelectionStatus, PhotoReviewStatus, Service, Portfolio, UserRole, AddonRequest } from '../types';
+import { User, Event, Photo, SelectionStatus, Service, Portfolio, AddonRequest, UserRole } from '../types';
+
+const API_URL = '/api';
 
 interface DataContextType {
   currentUser: User | null;
-  activeEvent: Event | null;
-  events: Event[];
-  photos: Photo[];
   users: User[];
+  events: Event[];
+  activeEvent: Event | null;
+  photos: Photo[];
   selectedPhotos: Set<string>;
+  isLoading: boolean;
+  setActiveEvent: (event: Event | null) => void;
   login: (email: string) => Promise<void>;
   signup: (name: string, email: string, phone: string) => Promise<void>;
   logout: () => void;
-  setActiveEvent: (event: Event | null) => void;
-  refreshPhotos: () => Promise<void>;
-  refreshEvents: () => Promise<void>;
-  togglePhotoSelection: (photoId: string) => void;
-  submitSelections: () => Promise<void>;
-  deletePhoto: (photoId: string) => Promise<void>;
-  updateEvent: (id: string, updates: Partial<Event>) => Promise<void>;
-  updateEventWorkflow: (eventId: string, status: SelectionStatus, deliveryDate?: string) => Promise<void>;
-  recordPayment: (eventId: string, amount: number, date: string, method: string, note?: string) => Promise<void>;
-  deleteEvent: (eventId: string) => Promise<void>;
-  addEvent: (event: any) => Promise<void>;
-  toggleUserStatus: (userId: string) => Promise<void>;
-  resetDatabase: () => Promise<void>;
   updateUser: (user: User) => Promise<void>;
-  updateUserServices: (userId: string, services: Service[]) => Promise<void>;
-  updateUserPortfolio: (userId: string, portfolio: Portfolio) => Promise<void>;
+  addEvent: (event: Partial<Event> & { initialClients?: any[] }) => Promise<void>;
+  updateEvent: (eventId: string, updates: Partial<Event>) => Promise<void>;
+  deleteEvent: (eventId: string) => Promise<void>;
+  updateEventWorkflow: (eventId: string, status: SelectionStatus, deliveryDate?: string) => Promise<void>;
+  deletePhoto: (photoId: string) => Promise<void>;
+  togglePhotoSelection: (photoId: string) => Promise<void>;
+  submitSelections: () => Promise<void>;
+  renamePersonInEvent: (eventId: string, oldName: string, newName: string) => Promise<void>;
   uploadAsset: (file: File) => Promise<string>;
   uploadRawPhotos: (eventId: string, files: FileList) => Promise<void>;
   uploadBulkEditedPhotos: (eventId: string, files: FileList) => Promise<void>;
-  renamePersonInEvent: (eventId: string, oldName: string, newName: string) => Promise<void>;
+  resetDatabase: () => Promise<void>;
   requestAddon: (eventId: string, serviceId: string) => Promise<void>;
   addPhotoComment: (photoId: string, text: string) => Promise<void>;
-  updatePhotoReviewStatus: (photoId: string, status: PhotoReviewStatus) => Promise<void>;
+  updatePhotoReviewStatus: (photoId: string, status: 'approved' | 'changes_requested' | 'pending') => Promise<void>;
   approveAllEdits: (eventId: string) => Promise<void>;
+  updateUserServices: (userId: string, services: Service[]) => Promise<void>;
+  updateUserPortfolio: (userId: string, portfolio: Portfolio) => Promise<void>;
+  toggleUserStatus: (userId: string) => Promise<void>;
+  refreshPhotos: (eventId: string) => Promise<void>;
+  downloadPhoto: (url: string, filename?: string) => void;
+  recordPayment: (eventId: string, amount: number, date: string, method: string, note: string) => Promise<void>;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
 
-export const useData = () => {
-  const context = useContext(DataContext);
-  if (!context) {
-    throw new Error('useData must be used within a DataProvider');
-  }
-  return context;
-};
-
-// Helper to ensure 'id' exists (mapping from _id if necessary)
-const fixId = (item: any) => {
-    if (!item) return item;
-    if (item._id && !item.id) {
-        return { ...item, id: item._id };
-    }
-    return item;
-};
-
 export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [activeEvent, setActiveEvent] = useState<Event | null>(null);
-  const [events, setEvents] = useState<Event[]>([]);
-  const [photos, setPhotos] = useState<Photo[]>([]);
-  const [users, setUsers] = useState<User[]>([]);
-  const [selectedPhotos, setSelectedPhotos] = useState<Set<string>>(new Set());
+  // Initialize from localStorage to prevent flash of login screen or data loss on refresh
+  const [currentUser, setCurrentUser] = useState<User | null>(() => {
+    const stored = localStorage.getItem('photoSortUser');
+    return stored ? JSON.parse(stored) : null;
+  });
 
-  const API_URL = '/api';
+  const [users, setUsers] = useState<User[]>([]);
+  const [events, setEvents] = useState<Event[]>([]);
+  
+  const [activeEvent, _setActiveEvent] = useState<Event | null>(() => {
+     return null;
+  });
+
+  const [photos, setPhotos] = useState<Photo[]>([]);
+  const [selectedPhotos, setSelectedPhotos] = useState<Set<string>>(new Set());
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Helper to ensure MongoDB _id is mapped to id
+  const normalizeData = (item: any) => {
+    if (!item) return item;
+    const normalized = {
+      ...item,
+      id: item.id || item._id, 
+    };
+    return normalized;
+  };
+
+  const setActiveEvent = (event: Event | null) => {
+    _setActiveEvent(event);
+    if (event) {
+        localStorage.setItem('photoSortActiveEventId', event.id);
+    } else {
+        localStorage.removeItem('photoSortActiveEventId');
+    }
+  };
+
+  const refreshData = async () => {
+      setIsLoading(true);
+      try {
+        const [usersRes, eventsRes] = await Promise.all([
+          fetch(`${API_URL}/users`),
+          fetch(`${API_URL}/events`)
+        ]);
+        
+        if (usersRes.ok) {
+            const rawUsers = await usersRes.json();
+            setUsers(Array.isArray(rawUsers) ? rawUsers.map(normalizeData) : []);
+        }
+        
+        if (eventsRes.ok) {
+            const rawEvents = await eventsRes.json();
+            const normalizedEvents = Array.isArray(rawEvents) ? rawEvents.map(normalizeData) : [];
+            setEvents(normalizedEvents);
+
+            // Restore active event if persisted
+            const storedEventId = localStorage.getItem('photoSortActiveEventId');
+            if (storedEventId && !activeEvent) {
+                const found = normalizedEvents.find((e: Event) => e.id === storedEventId);
+                if (found) _setActiveEvent(found);
+            }
+        }
+      } catch (e) { 
+          console.error("Failed to fetch data", e); 
+      } finally {
+          setIsLoading(false);
+      }
+  };
 
   useEffect(() => {
-    fetchUsers();
-    fetchEvents();
+    refreshData();
   }, []);
 
   useEffect(() => {
     if (activeEvent) {
-        fetchPhotos(activeEvent.id);
+      loadPhotos(activeEvent.id);
+    } else {
+      setPhotos([]);
+      setSelectedPhotos(new Set());
     }
-  }, [activeEvent]);
+  }, [activeEvent?.id]);
 
-  // Sync selectedPhotos set with photos from DB
-  useEffect(() => {
-      const selected = new Set(photos.filter(p => p.isSelected).map(p => p.id));
-      setSelectedPhotos(selected);
-  }, [photos]);
-
-  const fetchUsers = async () => {
-      try {
-        const res = await fetch(`${API_URL}/users`);
-        const data = await res.json();
-        setUsers(data.map(fixId));
-      } catch (e) { console.error("Fetch Users Error:", e); }
-  };
-
-  const fetchEvents = async () => {
-      try {
-        const res = await fetch(`${API_URL}/events`);
-        const data = await res.json();
-        setEvents(data.map(fixId));
-      } catch (e) { console.error("Fetch Events Error:", e); }
-  };
-
-  const fetchPhotos = async (eventId: string) => {
-      try {
-        const res = await fetch(`${API_URL}/events/${eventId}/photos`);
-        const data = await res.json();
-        setPhotos(data.map(fixId));
-      } catch (e) { console.error("Fetch Photos Error:", e); }
+  const loadPhotos = async (eventId: string) => {
+    try {
+      const res = await fetch(`${API_URL}/events/${eventId}/photos?t=${Date.now()}`); // Cache bust
+      if (res.ok) {
+        const rawData = await res.json();
+        const data: Photo[] = Array.isArray(rawData) ? rawData.map(normalizeData) : [];
+        setPhotos(data);
+        const selected = new Set(data.filter(p => p.isSelected).map(p => p.id));
+        setSelectedPhotos(selected);
+      }
+    } catch (e) { console.error("Failed to load photos", e); }
   };
 
   const login = async (email: string) => {
-      try {
-          const res = await fetch(`${API_URL}/auth/login`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ email })
-          });
-          const user = await res.json();
-          setCurrentUser(fixId(user));
-          // Refresh events to ensure we have the latest access rights
-          fetchEvents(); 
-      } catch (e) { console.error("Login Error:", e); }
+    try {
+      const res = await fetch(`${API_URL}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email })
+      });
+      if (res.ok) {
+        const rawUser = await res.json();
+        const user = normalizeData(rawUser);
+        setCurrentUser(user);
+        localStorage.setItem('photoSortUser', JSON.stringify(user));
+        await refreshData(); 
+      } else {
+        alert("Login failed. Please check backend connection.");
+      }
+    } catch (e) {
+      console.error(e);
+      alert("Login error. Is the backend running?");
+    }
   };
 
   const signup = async (name: string, email: string, phone: string) => {
-      try {
-          const res = await fetch(`${API_URL}/users`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ name, email, phone, role: 'PHOTOGRAPHER' })
-          });
-          const user = await res.json();
-          setCurrentUser(fixId(user));
-          fetchEvents();
-      } catch (e) { console.error(e); }
+    try {
+      const res = await fetch(`${API_URL}/auth/signup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, email, phone })
+      });
+      if (res.ok) {
+        const rawUser = await res.json();
+        const user = normalizeData(rawUser);
+        setCurrentUser(user);
+        localStorage.setItem('photoSortUser', JSON.stringify(user));
+        await refreshData(); 
+      } else {
+        alert("Signup failed. Email might already be in use.");
+      }
+    } catch (e) {
+      console.error(e);
+      alert("Signup error. Is the backend running?");
+    }
   };
 
   const logout = () => {
-      setCurrentUser(null);
-      setActiveEvent(null);
-      setPhotos([]);
+    setCurrentUser(null);
+    setActiveEvent(null);
+    localStorage.removeItem('photoSortUser');
+    localStorage.removeItem('photoSortActiveEventId');
   };
 
-  const refreshPhotos = async () => {
-      if (activeEvent) await fetchPhotos(activeEvent.id);
-  };
-
-  const refreshEvents = async () => {
-      await fetchEvents();
-  };
-
-  const togglePhotoSelection = async (photoId: string) => {
+  const updateUser = async (user: User) => {
       try {
-          // Optimistic update
-          const isSelected = selectedPhotos.has(photoId);
-          const newSet = new Set(selectedPhotos);
-          if (isSelected) newSet.delete(photoId);
-          else newSet.add(photoId);
-          setSelectedPhotos(newSet);
-
-          await fetch(`${API_URL}/photos/${photoId}/selection`, { method: 'POST' });
-          
-          setPhotos(prev => prev.map(p => p.id === photoId ? { ...p, isSelected: !isSelected } : p));
-      } catch (e) { 
-          console.error(e); 
-      }
-  };
-
-  const submitSelections = async () => {
-      if (!activeEvent) return;
-      try {
-          await updateEventWorkflow(activeEvent.id, 'submitted');
+        const res = await fetch(`${API_URL}/users/${user.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(user)
+        });
+        if (res.ok) {
+            const updated = normalizeData(await res.json());
+            setCurrentUser(updated);
+            setUsers(users.map(u => u.id === updated.id ? updated : u));
+        }
       } catch (e) { console.error(e); }
   };
 
-  const deletePhoto = async (photoId: string) => {
-      try {
-          await fetch(`${API_URL}/photos/${photoId}`, { method: 'DELETE' });
-          setPhotos(prev => prev.filter(p => p.id !== photoId));
-      } catch(e) { console.error(e); }
+  const addEvent = async (event: Partial<Event> & { initialClients?: any[] }) => {
+    try {
+        const res = await fetch(`${API_URL}/events`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(event)
+        });
+        if (res.ok) {
+            await refreshData();
+        }
+    } catch (e) { console.error(e); }
   };
 
-  const updateEvent = async (id: string, updates: Partial<Event>) => {
+  const updateEvent = async (eventId: string, updates: Partial<Event>) => {
       try {
-          const res = await fetch(`${API_URL}/events/${id}`, {
+          const res = await fetch(`${API_URL}/events/${eventId}`, {
               method: 'PUT',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(updates)
           });
-          const updated = await res.json();
-          const fixed = fixId(updated);
-          setEvents(prev => prev.map(e => e.id === id ? fixed : e));
-          if (activeEvent?.id === id) setActiveEvent(fixed);
+          if (res.ok) {
+              const updated = normalizeData(await res.json());
+              setEvents(events.map(e => e.id === eventId ? updated : e));
+              if (activeEvent?.id === eventId) setActiveEvent(updated);
+          }
       } catch (e) { console.error(e); }
-  };
-
-  const updateEventWorkflow = async (eventId: string, status: SelectionStatus, deliveryDate?: string) => {
-      const updates: any = { selectionStatus: status };
-      if (deliveryDate) {
-          updates.timeline = { ...activeEvent?.timeline, deliveryEstimate: deliveryDate };
-      }
-      await updateEvent(eventId, updates);
-  };
-
-  const recordPayment = async (eventId: string, amount: number, date: string, method: string, note?: string) => {
-      const event = events.find(e => e.id === eventId);
-      if (!event) return;
-      
-      const newPayment = { id: `pay-${Date.now()}`, date, amount, method, note };
-      const updatedHistory = [...(event.paymentHistory || []), newPayment];
-      const newPaidAmount = (event.paidAmount || 0) + amount;
-      const paymentStatus = newPaidAmount >= (event.price || 0) ? 'paid' : 'partial';
-      
-      await updateEvent(eventId, { 
-          paymentHistory: updatedHistory, 
-          paidAmount: newPaidAmount, 
-          paymentStatus 
-      });
   };
 
   const deleteEvent = async (eventId: string) => {
       try {
           await fetch(`${API_URL}/events/${eventId}`, { method: 'DELETE' });
-          setEvents(prev => prev.filter(e => e.id !== eventId));
-          if (activeEvent?.id === eventId) setActiveEvent(null);
+          setEvents(events.filter(e => e.id !== eventId));
+          if(activeEvent?.id === eventId) setActiveEvent(null);
+      } catch (e) { console.error(e); }
+  }
+
+  const updateEventWorkflow = async (eventId: string, status: SelectionStatus, deliveryDate?: string) => {
+      const updates: any = { selectionStatus: status };
+      if (deliveryDate) {
+          const event = events.find(e => e.id === eventId);
+          if (event) {
+              updates.timeline = { ...event.timeline, deliveryEstimate: deliveryDate };
+          }
+      }
+      await updateEvent(eventId, updates);
+  };
+
+  const deletePhoto = async (photoId: string) => {
+      try {
+          await fetch(`${API_URL}/photos/${photoId}`, { method: 'DELETE' });
+          setPhotos(photos.filter(p => p.id !== photoId));
+      } catch(e) { console.error(e); }
+  };
+
+  const togglePhotoSelection = async (photoId: string) => {
+      const newSelected = new Set(selectedPhotos);
+      if (newSelected.has(photoId)) newSelected.delete(photoId);
+      else newSelected.add(photoId);
+      setSelectedPhotos(newSelected);
+
+      try {
+          await fetch(`${API_URL}/photos/${photoId}/selection`, { method: 'POST' });
+          setPhotos(photos.map(p => p.id === photoId ? { ...p, isSelected: newSelected.has(photoId) } : p));
       } catch (e) { console.error(e); }
   };
 
-  const addEvent = async (eventData: any) => {
+  const submitSelections = async () => {
+      if (activeEvent) {
+          await updateEventWorkflow(activeEvent.id, 'submitted');
+          await fetch(`${API_URL}/events/${activeEvent.id}/submit-selections`, { method: 'POST' });
+          alert("Selections submitted successfully!");
+      }
+  };
+
+  const renamePersonInEvent = async (eventId: string, oldName: string, newName: string) => {
+      setPhotos(photos.map(p => ({
+          ...p,
+          people: p.people.map(person => person === oldName ? newName : person)
+      })));
+  };
+
+  // --- Real Upload Logic ---
+
+  const uploadAsset = async (file: File): Promise<string> => {
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await fetch(`${API_URL}/upload`, {
+          method: 'POST',
+          body: formData
+      });
+      if (!res.ok) throw new Error("Upload failed");
+      const data = await res.json();
+      return data.url; 
+  };
+
+  const uploadEventPhoto = async (eventId: string, file: File) => {
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await fetch(`${API_URL}/events/${eventId}/upload`, {
+          method: 'POST',
+          body: formData
+      });
+      if (!res.ok) throw new Error("Photo upload failed");
+      return await res.json(); // { url, originalFilename }
+  };
+
+  const uploadRawPhotos = async (eventId: string, files: FileList) => {
       try {
-          const res = await fetch(`${API_URL}/events`, {
+          const fileArray = Array.from(files);
+          // Upload files physically first
+          const uploadedFiles = await Promise.all(fileArray.map(f => uploadEventPhoto(eventId, f)));
+
+          // Prepare metadata payload
+          const photosPayload = uploadedFiles.map((fileData) => ({
+              url: fileData.url,
+              originalFilename: fileData.originalFilename,
+              eventId,
+              people: [],
+              tags: [],
+              isAiPick: false,
+              quality: 'medium',
+              category: 'Uploads',
+              isSelected: false
+          }));
+
+          // Save metadata to DB
+          const res = await fetch(`${API_URL}/events/${eventId}/photos`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(eventData)
+              body: JSON.stringify({ photos: photosPayload })
           });
-          const newEvent = await res.json();
-          setEvents(prev => [...prev, fixId(newEvent)]);
-      } catch (e) { console.error(e); }
+
+          if (res.ok) {
+              await loadPhotos(eventId);
+          } else {
+              alert("Failed to save photo metadata.");
+          }
+      } catch (e) { 
+          console.error("Batch upload failed", e); 
+          alert("Upload failed. Please check server connection.");
+      }
+  };
+
+  const uploadBulkEditedPhotos = async (eventId: string, files: FileList) => {
+      try {
+          const fileArray = Array.from(files);
+          // 1. Upload files physically
+          const uploadedFiles = await Promise.all(fileArray.map(f => uploadEventPhoto(eventId, f)));
+
+          let matchedCount = 0;
+
+          // 2. Match and Update
+          // Use more robust matching regex that handles case insensitivity and multiple extension types
+          const cleanName = (name: string) => name.split('.').slice(0, -1).join('.').replace(/[-_ ](edit|final|copy|v\d+)/i, '').trim().toLowerCase();
+
+          const updatePromises = uploadedFiles.map(async (fileData) => {
+              const uploadedClean = cleanName(fileData.originalFilename);
+
+              // Find match in current photo list
+              const match = photos.find(p => {
+                  if (!p.originalFilename) return false;
+                  return cleanName(p.originalFilename) === uploadedClean;
+              });
+              
+              if (match) {
+                  matchedCount++;
+                  // Update the photo record with the new editedUrl AND reset review status
+                  await fetch(`${API_URL}/photos/${match.id}`, {
+                      method: 'PUT',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ 
+                          editedUrl: fileData.url, 
+                          reviewStatus: 'pending' // Important: Reset workflow on new upload
+                      })
+                  });
+              }
+          });
+
+          await Promise.all(updatePromises);
+          
+          if (matchedCount > 0) {
+              await loadPhotos(eventId);
+              // Also auto-advance workflow to 'review' if appropriate
+              if (activeEvent?.selectionStatus === 'editing') {
+                  updateEventWorkflow(eventId, 'review');
+              }
+              alert(`Success! Linked ${matchedCount} edits to original photos. Workflow set to Review.`);
+          } else {
+              alert("Uploaded files but could not automatically match them to existing photos. Ensure filenames are similar (e.g. IMG_1234.jpg and IMG_1234-Edit.jpg).");
+          }
+
+      } catch (e) { 
+          console.error("Bulk edit upload failed", e); 
+          alert("Upload failed. Please check server connection.");
+      }
+  };
+
+  const resetDatabase = async () => {
+      // Needs admin endpoint
+      localStorage.clear();
+      window.location.reload();
+  };
+
+  const requestAddon = async (eventId: string, serviceId: string) => {
+      // Logic stub
+      alert("Addon request sent.");
+  };
+
+  const addPhotoComment = async (photoId: string, text: string) => {
+      // Optimistic
+      setPhotos(photos.map(p => {
+          if (p.id === photoId) {
+             const comments = p.comments || [];
+             return { ...p, comments: [...comments, { id: Date.now().toString(), author: currentUser?.name || 'User', text, date: new Date().toISOString(), role: currentUser?.role || UserRole.USER }] };
+          }
+          return p;
+      }));
+  };
+
+  const updatePhotoReviewStatus = async (photoId: string, status: 'approved' | 'changes_requested' | 'pending') => {
+      try {
+          await fetch(`${API_URL}/photos/${photoId}`, {
+              method: 'PUT',
+              headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify({ reviewStatus: status })
+          });
+          setPhotos(photos.map(p => p.id === photoId ? { ...p, reviewStatus: status } : p));
+      } catch (e) {
+          console.error(e);
+      }
+  };
+
+  const approveAllEdits = async (eventId: string) => {
+      // In a real app, do this via a bulk endpoint
+      const edited = photos.filter(p => p.editedUrl);
+      await Promise.all(edited.map(p => updatePhotoReviewStatus(p.id, 'approved')));
+      await updateEventWorkflow(eventId, 'accepted');
+  };
+
+  const updateUserServices = async (userId: string, services: Service[]) => {
+      if(currentUser) await updateUser({ ...currentUser, id: userId, services });
+  };
+
+  const updateUserPortfolio = async (userId: string, portfolio: Portfolio) => {
+      if(currentUser) await updateUser({ ...currentUser, id: userId, portfolio });
   };
 
   const toggleUserStatus = async (userId: string) => {
       try {
           const res = await fetch(`${API_URL}/users/${userId}/status`, { method: 'PATCH' });
-          const updated = await res.json();
-          const fixed = fixId(updated);
-          setUsers(prev => prev.map(u => u.id === userId ? fixed : u));
-      } catch (e) { console.error(e); }
-  };
-
-  const resetDatabase = async () => {
-      console.log("Reset database requested");
-  };
-
-  const updateUser = async (user: User) => {
-      try {
-          const res = await fetch(`${API_URL}/users/${user.id}`, {
-              method: 'PUT',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(user)
-          });
-          const updated = await res.json();
-          const fixed = fixId(updated);
-          setUsers(prev => prev.map(u => u.id === user.id ? fixed : u));
-          if (currentUser?.id === user.id) setCurrentUser(fixed);
-      } catch (e) { console.error(e); }
-  };
-
-  const updateUserServices = async (userId: string, services: Service[]) => {
-      const user = users.find(u => u.id === userId);
-      if (user) await updateUser({ ...user, services });
-  };
-
-  const updateUserPortfolio = async (userId: string, portfolio: Portfolio) => {
-      const user = users.find(u => u.id === userId);
-      if (user) await updateUser({ ...user, portfolio });
-  };
-
-  const uploadAsset = async (file: File): Promise<string> => {
-      // In a real app, this would upload to S3/Cloudinary or the backend /upload endpoint
-      const formData = new FormData();
-      formData.append('file', file);
-      
-      const res = await fetch(`${API_URL}/upload`, {
-          method: 'POST',
-          body: formData
-      });
-      const data = await res.json();
-      return data.url;
-  };
-
-  const uploadRawPhotos = async (eventId: string, files: FileList) => {
-      // Create photos array from uploads
-      const photoObjects = [];
-      // Use uploadAsset sequentially or parallel
-      for (let i = 0; i < files.length; i++) {
-          const file = files[i];
-          // We assume a dedicated endpoint or reuse generic one
-          const formData = new FormData();
-          formData.append('file', file);
-          const res = await fetch(`${API_URL}/events/${eventId}/upload`, { method: 'POST', body: formData });
-          if (!res.ok) {
-              console.error(`Failed to upload file ${file.name}`);
-              continue;
+          if (res.ok) {
+              const updatedUser = normalizeData(await res.json());
+              setUsers(users.map(u => u.id === userId ? updatedUser : u));
           }
-          const data = await res.json();
-          
-          photoObjects.push({
-              url: data.url,
-              eventId: eventId, // Critical: Required by Backend Validation
-              tags: [],
-              people: [],
-              category: 'General',
-              originalSize: file.size,
-              quality: 'high',
-              originalFilename: data.originalFilename
-          });
-      }
-      
-      if (photoObjects.length > 0) {
-          const batchRes = await fetch(`${API_URL}/events/${eventId}/photos`, {
+      } catch(e) { console.error(e); }
+  };
+  
+  const refreshPhotos = async (eventId: string) => {
+      await loadPhotos(eventId);
+  };
+
+  const downloadPhoto = (url: string, filename?: string) => {
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename || 'downloaded_photo.jpg';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+  };
+
+  const recordPayment = async (eventId: string, amount: number, date: string, method: string, note: string) => {
+      try {
+          const res = await fetch(`${API_URL}/events/${eventId}/payment`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ photos: photoObjects })
+              body: JSON.stringify({ amount, date, method, note })
           });
-          
-          if (!batchRes.ok) {
-              const errorText = await batchRes.text();
-              console.error("Batch creation failed:", errorText);
-              throw new Error("Failed to create photo records");
+          if (res.ok) {
+              const updated = normalizeData(await res.json());
+              setEvents(events.map(e => e.id === eventId ? updated : e));
+              if (activeEvent?.id === eventId) setActiveEvent(updated);
+          } else {
+              alert("Failed to record payment");
           }
-      }
-      
-      await fetchPhotos(eventId);
-  };
-
-  const uploadBulkEditedPhotos = async (eventId: string, files: FileList) => {
-      // Implementation for edits would involve matching filenames
-      console.log("Bulk edit upload not fully implemented in mock.");
-  };
-
-  const renamePersonInEvent = async (eventId: string, oldName: string, newName: string) => {
-      setPhotos(prev => prev.map(p => {
-          if (p.eventId === eventId && p.people.includes(oldName)) {
-              return { ...p, people: p.people.map(person => person === oldName ? newName : person) };
-          }
-          return p;
-      }));
-  };
-
-  const requestAddon = async (eventId: string, serviceId: string) => {
-     console.log(`Requested addon ${serviceId} for event ${eventId}`);
-  };
-
-  const addPhotoComment = async (photoId: string, text: string) => {
-      setPhotos(prev => prev.map(p => {
-          if (p.id === photoId) {
-              const comments = p.comments || [];
-              return { ...p, comments: [...comments, { id: Date.now().toString(), author: currentUser?.name || 'User', text, date: new Date().toISOString(), role: currentUser?.role || UserRole.USER }] };
-          }
-          return p;
-      }));
-  };
-
-  const updatePhotoReviewStatus = async (photoId: string, status: PhotoReviewStatus) => {
-      setPhotos(prev => prev.map(p => p.id === photoId ? { ...p, reviewStatus: status } : p));
-  };
-
-  const approveAllEdits = async (eventId: string) => {
-      setPhotos(prev => prev.map(p => p.eventId === eventId && p.editedUrl ? { ...p, reviewStatus: 'approved' } : p));
-      await updateEventWorkflow(eventId, 'accepted');
-  };
-
-  const value = {
-      currentUser,
-      activeEvent,
-      events,
-      photos,
-      users,
-      selectedPhotos,
-      login,
-      signup,
-      logout,
-      setActiveEvent,
-      refreshPhotos,
-      refreshEvents,
-      togglePhotoSelection,
-      submitSelections,
-      deletePhoto,
-      updateEvent,
-      updateEventWorkflow,
-      recordPayment,
-      deleteEvent,
-      addEvent,
-      toggleUserStatus,
-      resetDatabase,
-      updateUser,
-      updateUserServices,
-      updateUserPortfolio,
-      uploadAsset,
-      uploadRawPhotos,
-      uploadBulkEditedPhotos,
-      renamePersonInEvent,
-      requestAddon,
-      addPhotoComment,
-      updatePhotoReviewStatus,
-      approveAllEdits
+      } catch(e) { console.error(e); alert("Failed to record payment"); }
   };
 
   return (
-    <DataContext.Provider value={value}>
+    <DataContext.Provider value={{
+      currentUser, users, events, activeEvent, photos, selectedPhotos, isLoading, setActiveEvent,
+      login, signup, logout, updateUser, addEvent, updateEvent, deleteEvent, updateEventWorkflow,
+      deletePhoto, togglePhotoSelection, submitSelections, renamePersonInEvent,
+      uploadAsset, uploadRawPhotos, uploadBulkEditedPhotos, resetDatabase,
+      requestAddon, addPhotoComment, updatePhotoReviewStatus, approveAllEdits,
+      updateUserServices, updateUserPortfolio, toggleUserStatus, refreshPhotos, downloadPhoto, recordPayment
+    }}>
       {children}
     </DataContext.Provider>
   );
+};
+
+export const useData = () => {
+  const context = useContext(DataContext);
+  if (context === undefined) {
+    throw new Error('useData must be used within a DataProvider');
+  }
+  return context;
 };

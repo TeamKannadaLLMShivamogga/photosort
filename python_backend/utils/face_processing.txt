@@ -115,11 +115,9 @@ class FaceService:
             person_name = None
             
             # Check distance threshold (Cosine distance)
-            # Lower is better match. 0.0 is exact.
             if results['ids'] and results['ids'][0] and results['distances'] and results['distances'][0]:
                 distance = results['distances'][0][0]
-                # Increased threshold from 0.4 to 0.6 to be more lenient and group faces better
-                if distance < 0.6: 
+                if distance < 0.4: # Match threshold
                     person_name = results['metadatas'][0][0]['name']
                     # print(f"DEBUG: Match found: {person_name} (dist: {distance:.4f})")
 

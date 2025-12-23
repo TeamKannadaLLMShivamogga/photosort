@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { DataProvider, useData } from './context/DataContext';
 import { UserRole, FamilyMember } from './types';
@@ -17,7 +16,7 @@ import AdminDashboard from './views/Admin/Dashboard';
 import { 
   LogIn, Camera, Bell, Search, Settings, User as UserIcon, Save, 
   Image as ImageIcon, Plus, Trash2, Upload, Heart, UserPlus, Info, Users, Menu,
-  CreditCard, Landmark, Globe, Smartphone, Mail, ShieldCheck, Zap, ChevronRight, Lock, Loader2, ArrowRight, UploadCloud
+  CreditCard, Landmark, Globe, Smartphone, Mail, ShieldCheck, Zap, ChevronRight, Lock, Loader2, ArrowRight
 } from 'lucide-react';
 
 const AppContent: React.FC = () => {
@@ -323,20 +322,10 @@ const AppContent: React.FC = () => {
                     onChange={handleEditUpload} 
                 />
                 {(isUploadingRaw || isUploadingEdits) && (
-                    <div className="fixed bottom-6 right-6 z-50 animate-in slide-in-from-bottom-10 fade-in duration-300">
-                        <div className="bg-slate-900 text-white p-4 rounded-2xl shadow-2xl flex items-center gap-4 min-w-[300px] border border-slate-700">
-                            <div className="bg-white/10 p-2 rounded-xl">
-                                <UploadCloud className="w-5 h-5 text-indigo-400 animate-pulse" />
-                            </div>
-                            <div className="flex-1 space-y-1.5">
-                                <div className="flex justify-between text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                                    <span>{isUploadingRaw ? 'Uploading Raw Photos' : 'Uploading Edits'}</span>
-                                    <span className="text-white">Processing...</span>
-                                </div>
-                                <div className="h-1.5 bg-slate-700 rounded-full overflow-hidden w-full relative">
-                                    <div className="absolute inset-y-0 left-0 bg-indigo-500 rounded-full w-1/3 animate-[shimmer_1.5s_infinite] bg-gradient-to-r from-indigo-500 via-indigo-400 to-indigo-500"></div>
-                                </div>
-                            </div>
+                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+                        <div className="bg-white p-8 rounded-3xl flex flex-col items-center gap-4">
+                            <Loader2 className="w-10 h-10 animate-spin text-indigo-600" />
+                            <p className="font-bold text-slate-900">Uploading Photos...</p>
                         </div>
                     </div>
                 )}

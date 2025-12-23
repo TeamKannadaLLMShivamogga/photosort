@@ -1,12 +1,16 @@
 
 import os
+import shutil
+import time
+import json
 from datetime import datetime
-from typing import List, Optional, Literal, Set, Dict, Any
+from typing import List, Optional, Literal, Dict, Any
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, Body, BackgroundTasks
+from fastapi import FastAPI, HTTPException, Body, BackgroundTasks, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field, BeforeValidator, ConfigDict
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, Field, BeforeValidator, ConfigDict, EmailStr
 from motor.motor_asyncio import AsyncIOMotorClient
 from bson import ObjectId
 from typing_extensions import Annotated
@@ -15,15 +19,16 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# --- Database Setup ---
+# --- Database & Config ---
 MONGO_URL = os.getenv("MONGODB_URL", "mongodb://localhost:27017")
 DB_NAME = "photosort"
 AI_SERVICE_URL = os.getenv("AI_SERVICE_URL", "http://localhost:8001")
+UPLOAD_DIR = "uploads"
 
 client = AsyncIOMotorClient(MONGO_URL)
 db = client[DB_NAME]
 
-# --- Pydantic ObjectId Helper ---
+# --- Pydantic Helpers ---
 PyObjectId = Annotated[str, BeforeValidator(str)]
 
 class MongoBaseModel(BaseModel):
@@ -31,19 +36,26 @@ class MongoBaseModel(BaseModel):
     model_config = ConfigDict(
         populate_by_name=True,
         arbitrary_types_allowed=True,
-        json_encoders={ObjectId: str},
-        extra='ignore'
+        json_encoders={ObjectId: str}
     )
 
-# --- Models (Matching Frontend Types) ---
+# --- Domain Models ---
 
 UserRole = Literal['ADMIN', 'PHOTOGRAPHER', 'USER']
-SubscriptionTier = Literal['FREE', 'PRO', 'STUDIO']
 EventStatus = Literal['active', 'completed', 'closed']
-PhotoQuality = Literal['high', 'medium', 'low']
-EventPlan = Literal['BASIC', 'STANDARD', 'PRO']
-PaymentStatus = Literal['pending', 'partial', 'paid']
-OptimizationType = Literal['none', 'balanced', 'performance', 'high-quality']
+SelectionStatus = Literal['open', 'submitted', 'editing', 'review', 'accepted']
+
+class Service(BaseModel):
+    id: str
+    name: str
+    price: float
+    type: str = 'service'
+    description: Optional[str] = None
+
+class Portfolio(BaseModel):
+    bio: str = ""
+    galleryImages: List[str] = []
+    videoLinks: List[str] = []
 
 class FamilyMember(BaseModel):
     id: str
@@ -55,17 +67,37 @@ class SubEvent(BaseModel):
     id: str
     name: str
     date: datetime
+    location: Optional[str] = None
+
+class PaymentRecord(BaseModel):
+    id: str
+    date: datetime
+    amount: float
+    method: str
+    note: Optional[str] = None
+
+class EventTimeline(BaseModel):
+    selectionDeadline: Optional[datetime] = None
+    deliveryEstimate: Optional[datetime] = None
+    selectionSubmittedAt: Optional[datetime] = None
+    editingStartedAt: Optional[datetime] = None
+    reviewStartedAt: Optional[datetime] = None
+    finalizedAt: Optional[datetime] = None
 
 class User(MongoBaseModel):
-    email: str
+    email: EmailStr
     name: str
     role: UserRole = 'USER'
+    phone: Optional[str] = None
     avatar: Optional[str] = None
     familyMembers: List[FamilyMember] = []
-    subscriptionTier: SubscriptionTier = 'FREE'
+    subscriptionTier: str = 'FREE'
     subscriptionExpiry: Optional[datetime] = None
     isActive: bool = True
-    joinDate: Optional[datetime] = Field(default_factory=datetime.now)
+    joinDate: datetime = Field(default_factory=datetime.now)
+    services: List[Service] = []
+    portfolio: Portfolio = Field(default_factory=Portfolio)
+    # Stats
     totalEventsCount: int = 0
     totalPhotosCount: int = 0
     totalUsersCount: int = 0
@@ -73,117 +105,108 @@ class User(MongoBaseModel):
 class Event(MongoBaseModel):
     name: str
     date: datetime
+    endDate: Optional[datetime] = None
+    location: Optional[str] = None
     photographerId: str
     coverImage: str
     photoCount: int = 0
     assignedUsers: List[str] = []
     subEvents: List[SubEvent] = []
     status: EventStatus = 'active'
-    price: Optional[float] = 0.0
-    paidAmount: Optional[float] = 0.0
-    paymentStatus: PaymentStatus = 'pending'
-    plan: EventPlan = 'BASIC'
+    selectionStatus: SelectionStatus = 'open'
+    timeline: EventTimeline = Field(default_factory=EventTimeline)
+    price: float = 0.0
+    paidAmount: float = 0.0
+    paymentStatus: str = 'pending'
+    paymentHistory: List[PaymentRecord] = []
+    plan: str = 'BASIC'
     clientEmail: Optional[str] = None
     clientPhone: Optional[str] = None
-    serviceFee: Optional[float] = 0.0
-    deadline: Optional[datetime] = None
-    optimizationSetting: OptimizationType = 'balanced'
+    serviceFee: float = 0.0
+    optimizationSetting: str = 'balanced'
+    selectedServices: List[Service] = []
+    # Virtual field for creation
+    initialClients: Optional[List[Dict[str, str]]] = None 
+
+class Comment(BaseModel):
+    id: str
+    author: str
+    text: str
+    date: datetime
+    role: str
+    resolved: bool = False
 
 class Photo(MongoBaseModel):
     url: str
     eventId: str
+    subEventId: Optional[str] = None
+    originalFilename: Optional[str] = None
     tags: List[str] = []
     people: List[str] = []
     isAiPick: bool = False
-    quality: PhotoQuality = 'medium'
-    category: Optional[str] = None
-    subEventId: Optional[str] = None
+    quality: str = 'medium'
+    category: Optional[str] = "General"
     isSelected: bool = False
-    isAiProcessed: bool = False
-    originalSize: Optional[int] = 0
-    optimizedSize: Optional[int] = 0
-    # Added fields to match frontend payload
-    originalFilename: Optional[str] = None
+    reviewStatus: str = 'pending'
     editedUrl: Optional[str] = None
+    isAiProcessed: bool = False
+    comments: List[Comment] = []
 
+# --- DTOs ---
 class LoginRequest(BaseModel):
     email: str
+
+class SignupRequest(BaseModel):
+    name: str
+    email: str
+    phone: str
+    role: UserRole = 'PHOTOGRAPHER'
 
 class PhotoUploadRequest(BaseModel):
     photos: List[Photo]
 
-# --- Startup/Seeding ---
+class PaymentRequest(BaseModel):
+    amount: float
+    date: str
+    method: str
+    note: Optional[str] = None
 
-async def seed_data():
-    if await db.users.count_documents({}) > 0:
-        return
-    
-    print("Seeding Database...")
-    
-    # Create Admin
-    admin = User(
-        email="admin@photosort.com",
-        name="Admin User",
-        role="ADMIN",
-        avatar="https://ui-avatars.com/api/?name=Admin&background=000&color=fff"
-    )
-    res_admin = await db.users.insert_one(admin.model_dump(by_alias=True, exclude=["id"]))
-    
-    # Create Photographer
-    photographer = User(
-        email="photographer@photosort.com",
-        name="John Doe Studio",
-        role="PHOTOGRAPHER",
-        avatar="https://ui-avatars.com/api/?name=John+Doe&background=10B981&color=fff",
-        subscriptionTier="PRO",
-        subscriptionExpiry=datetime(2025, 12, 31),
-        totalEventsCount=1,
-        totalPhotosCount=12,
-        totalUsersCount=1
-    )
-    res_photog = await db.users.insert_one(photographer.model_dump(by_alias=True, exclude=["id"]))
-    photog_id = str(res_photog.inserted_id)
-
-    # Create User
-    client_user = User(
-        email="user@photosort.com",
-        name="Rohan & Priya",
-        role="USER",
-        avatar="https://ui-avatars.com/api/?name=Rohan+Priya&background=random"
-    )
-    res_client = await db.users.insert_one(client_user.model_dump(by_alias=True, exclude=["id"]))
-    client_id = str(res_client.inserted_id)
-
-    # Create Event
-    event_date = datetime.now()
-    event = Event(
-        name="Rohan Weds Priya - The Royal Wedding",
-        date=event_date,
-        photographerId=photog_id,
-        coverImage="https://images.unsplash.com/photo-1519741497674-611481863552?q=80&w=2070&auto=format&fit=crop",
-        photoCount=0,
-        assignedUsers=[client_id],
-        status='active',
-        price=150000,
-        paidAmount=75000,
-        paymentStatus='partial',
-        plan='PRO',
-        subEvents=[
-            SubEvent(id="se-1", name="Haldi", date=event_date),
-            SubEvent(id="se-2", name="Wedding", date=event_date),
-            SubEvent(id="se-3", name="Reception", date=event_date)
-        ]
-    )
-    await db.events.insert_one(event.model_dump(by_alias=True, exclude=["id"]))
-    print("Seeding Complete.")
+# --- Lifecycle ---
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    await seed_data()
+    # Ensure upload directory
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
+    
+    # Simple Seed check
+    if await db.users.count_documents({}) == 0:
+        await seed_database()
     yield
+
+async def seed_database():
+    print("Seeding Initial Data...")
+    # Admin
+    await db.users.insert_one(User(
+        name="System Admin", email="admin@photosort.com", role="ADMIN", 
+        avatar="https://ui-avatars.com/api/?name=Admin&background=000&color=fff"
+    ).model_dump(by_alias=True, exclude=["id"]))
+    
+    # Photographer
+    await db.users.insert_one(User(
+        name="Demo Studio", email="photographer@photosort.com", role="PHOTOGRAPHER",
+        subscriptionTier="PRO", avatar="https://ui-avatars.com/api/?name=Demo+Studio&background=10B981&color=fff"
+    ).model_dump(by_alias=True, exclude=["id"]))
+
+    # Client
+    await db.users.insert_one(User(
+        name="Rohan & Priya", email="user@photosort.com", role="USER",
+        avatar="https://ui-avatars.com/api/?name=Rohan+Priya&background=random"
+    ).model_dump(by_alias=True, exclude=["id"]))
+    print("Seeding Complete.")
 
 app = FastAPI(lifespan=lifespan)
 
+# CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -192,147 +215,254 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Static Files
+app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
+
 # --- Helpers ---
 
 async def trigger_ai_service(event_id: str):
+    """Fire and forget call to AI service"""
     async with httpx.AsyncClient() as client:
         try:
-            await client.post(f"{AI_SERVICE_URL}/process-event/{event_id}")
+            # Short timeout, we don't wait for completion
+            await client.post(f"{AI_SERVICE_URL}/process-event/{event_id}", timeout=1.0)
         except Exception as e:
-            print(f"Failed to trigger AI service: {e}")
+            print(f"Triggered AI Service (Background): {e}")
 
-# --- API Routes ---
+# --- Routes ---
 
 @app.get("/")
 def read_root():
-    return {"status": "Master Backend Running"}
+    return {"status": "Master Backend Online", "docs": "/docs"}
 
-# Auth
+# --- Auth ---
+
 @app.post("/api/auth/login", response_model=User)
 async def login(req: LoginRequest):
     user = await db.users.find_one({"email": req.email})
     if not user:
+        # Auto-create for demo/client ease
         new_user = User(
             email=req.email,
-            name=req.email.split('@')[0],
-            role="USER",
+            name=req.email.split("@")[0],
+            role='USER',
             avatar=f"https://ui-avatars.com/api/?name={req.email}&background=random"
         )
         res = await db.users.insert_one(new_user.model_dump(by_alias=True, exclude=["id"]))
-        created_user = await db.users.find_one({"_id": res.inserted_id})
-        return created_user
+        return await db.users.find_one({"_id": res.inserted_id})
     return user
 
-# Users
+@app.post("/api/auth/signup", response_model=User)
+async def signup(req: SignupRequest):
+    existing = await db.users.find_one({"email": req.email})
+    if existing:
+        return existing # In real app, return error or handle properly
+    
+    new_user = User(
+        email=req.email, name=req.name, phone=req.phone, role=req.role,
+        avatar=f"https://ui-avatars.com/api/?name={req.name}&background=random"
+    )
+    res = await db.users.insert_one(new_user.model_dump(by_alias=True, exclude=["id"]))
+    return await db.users.find_one({"_id": res.inserted_id})
+
+# --- Uploads ---
+
+@app.post("/api/upload")
+async def upload_general_file(file: UploadFile = File(...)):
+    filename = f"general_{int(time.time())}_{file.filename}"
+    path = os.path.join(UPLOAD_DIR, filename)
+    
+    with open(path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+        
+    return {"url": f"/uploads/{filename}"}
+
+@app.post("/api/events/{id}/upload")
+async def upload_event_file(id: str, file: UploadFile = File(...)):
+    # Create subfolder for organization (optional, keeping flat for simplicity here)
+    filename = f"evt_{id}_{int(time.time())}_{file.filename}"
+    path = os.path.join(UPLOAD_DIR, filename)
+    
+    with open(path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+        
+    return {"url": f"/uploads/{filename}", "originalFilename": file.filename}
+
+# --- Users ---
+
 @app.get("/api/users", response_model=List[User])
 async def get_users():
-    users = await db.users.find().to_list(1000)
-    return users
-
-@app.post("/api/users", response_model=User)
-async def create_user(user: User):
-    new_user = await db.users.insert_one(user.model_dump(by_alias=True, exclude=["id"]))
-    created_user = await db.users.find_one({"_id": new_user.inserted_id})
-    return created_user
+    return await db.users.find().to_list(1000)
 
 @app.put("/api/users/{id}", response_model=User)
-async def update_user(id: str, user: User):
-    await db.users.update_one({"_id": ObjectId(id)}, {"$set": user.model_dump(exclude=["id"])})
-    updated_user = await db.users.find_one({"_id": ObjectId(id)})
-    return updated_user
+async def update_user(id: str, updates: dict = Body(...)):
+    # Security check omitted for demo
+    if '_id' in updates: del updates['_id']
+    await db.users.update_one({"_id": ObjectId(id)}, {"$set": updates})
+    return await db.users.find_one({"_id": ObjectId(id)})
 
-@app.delete("/api/users/{id}")
-async def delete_user(id: str):
-    await db.users.delete_one({"_id": ObjectId(id)})
-    return {"message": "User deleted"}
-
-@app.patch("/api/users/{id}/status", response_model=User)
+@app.patch("/api/users/{id}/status")
 async def toggle_user_status(id: str):
     user = await db.users.find_one({"_id": ObjectId(id)})
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    new_status = not user.get("isActive", True)
-    await db.users.update_one({"_id": ObjectId(id)}, {"$set": {"isActive": new_status}})
-    updated_user = await db.users.find_one({"_id": ObjectId(id)})
-    return updated_user
+    if user:
+        await db.users.update_one({"_id": ObjectId(id)}, {"$set": {"isActive": not user.get("isActive", True)}})
+    return await db.users.find_one({"_id": ObjectId(id)})
 
-# Events
+# --- Events ---
+
 @app.get("/api/events", response_model=List[Event])
 async def get_events():
-    events = await db.events.find().to_list(1000)
-    return events
+    return await db.events.find().sort("date", -1).to_list(1000)
 
 @app.post("/api/events", response_model=Event)
 async def create_event(event: Event):
-    event_dict = event.model_dump(by_alias=True, exclude=["id"])
-    if not event_dict.get("subEvents"):
-         event_dict["subEvents"] = [
-             SubEvent(id=f"se-{datetime.now().timestamp()}", name="Main Event", date=event.date).model_dump()
-         ]
+    event_data = event.model_dump(by_alias=True, exclude=["id", "initialClients"])
     
-    new_event = await db.events.insert_one(event_dict)
-    created_event = await db.events.find_one({"_id": new_event.inserted_id})
-    return created_event
+    # 1. Handle Clients
+    assigned_ids = []
+    if event.initialClients:
+        for client_info in event.initialClients:
+            # Check if exists
+            existing = await db.users.find_one({"email": client_info['email']})
+            if existing:
+                assigned_ids.append(str(existing["_id"]))
+            else:
+                # Create
+                new_client = User(
+                    name=client_info['name'], 
+                    email=client_info['email'], 
+                    phone=client_info.get('phone'),
+                    role='USER',
+                    avatar=f"https://ui-avatars.com/api/?name={client_info['name']}"
+                )
+                res = await db.users.insert_one(new_client.model_dump(by_alias=True, exclude=["id"]))
+                assigned_ids.append(str(res.inserted_id))
+    
+    event_data['assignedUsers'] = list(set(event_data.get('assignedUsers', []) + assigned_ids))
+    
+    # 2. Defaults
+    if not event_data.get('subEvents'):
+        event_data['subEvents'] = [
+            SubEvent(id=f"se-{int(time.time())}", name="Main Event", date=event.date).model_dump()
+        ]
+
+    # 3. Save
+    res = await db.events.insert_one(event_data)
+    
+    # 4. Update Stats for Photographer
+    await db.users.update_one(
+        {"_id": ObjectId(event.photographerId)}, 
+        {"$inc": {"totalEventsCount": 1, "totalUsersCount": len(assigned_ids)}}
+    )
+
+    return await db.events.find_one({"_id": res.inserted_id})
 
 @app.put("/api/events/{id}", response_model=Event)
-async def update_event(id: str, event: Event):
-    await db.events.update_one({"_id": ObjectId(id)}, {"$set": event.model_dump(exclude=["id"])})
-    updated_event = await db.events.find_one({"_id": ObjectId(id)})
-    return updated_event
+async def update_event(id: str, updates: dict = Body(...)):
+    if '_id' in updates: del updates['_id']
+    await db.events.update_one({"_id": ObjectId(id)}, {"$set": updates})
+    return await db.events.find_one({"_id": ObjectId(id)})
 
-@app.delete("/api/events/{id}")
-async def delete_event(id: str):
-    await db.events.delete_one({"_id": ObjectId(id)})
-    await db.photos.delete_many({"eventId": id})
-    return {"message": "Event deleted"}
+@app.post("/api/events/{id}/submit-selections")
+async def submit_selections(id: str):
+    await db.events.update_one(
+        {"_id": ObjectId(id)}, 
+        {"$set": {
+            "selectionStatus": "submitted", 
+            "timeline.selectionSubmittedAt": datetime.now()
+        }}
+    )
+    return {"message": "Submitted"}
 
-# Photos
+@app.post("/api/events/{id}/payment", response_model=Event)
+async def record_payment(id: str, payment: PaymentRequest):
+    event = await db.events.find_one({"_id": ObjectId(id)})
+    if not event: raise HTTPException(404, "Event not found")
+    
+    new_record = PaymentRecord(
+        id=f"pay-{int(time.time())}",
+        date=datetime.fromisoformat(payment.date.replace('Z', '+00:00')),
+        amount=payment.amount,
+        method=payment.method,
+        note=payment.note
+    )
+    
+    new_paid_amount = (event.get('paidAmount') or 0) + payment.amount
+    payment_status = 'paid' if new_paid_amount >= (event.get('price') or 0) else 'partial'
+    
+    await db.events.update_one(
+        {"_id": ObjectId(id)}, 
+        {
+            "$push": {"paymentHistory": new_record.model_dump()},
+            "$set": {
+                "paidAmount": new_paid_amount,
+                "paymentStatus": payment_status
+            }
+        }
+    )
+    return await db.events.find_one({"_id": ObjectId(id)})
+
+# --- Photos ---
+
 @app.get("/api/events/{id}/photos", response_model=List[Photo])
 async def get_event_photos(id: str):
-    photos = await db.photos.find({"eventId": id}).to_list(2000)
-    return photos
+    return await db.photos.find({"eventId": id}).to_list(5000)
 
 @app.post("/api/events/{id}/photos", response_model=List[Photo])
-async def upload_photos(id: str, payload: PhotoUploadRequest, background_tasks: BackgroundTasks):
+async def add_photos_metadata(id: str, payload: PhotoUploadRequest, background_tasks: BackgroundTasks):
     photos_data = []
     for p in payload.photos:
         p_dict = p.model_dump(by_alias=True, exclude=["id"])
-        p_dict["eventId"] = id
-        p_dict["isAiProcessed"] = False # Reset for AI service
+        p_dict['eventId'] = id
+        p_dict['isAiProcessed'] = False
         photos_data.append(p_dict)
+        
+    if not photos_data: return []
     
-    if not photos_data:
-        return []
-
-    result = await db.photos.insert_many(photos_data)
+    res = await db.photos.insert_many(photos_data)
     
-    # Update event count
+    # Update count
     count = await db.photos.count_documents({"eventId": id})
     await db.events.update_one({"_id": ObjectId(id)}, {"$set": {"photoCount": count}})
+    
+    # Update Photographer Stats
+    evt = await db.events.find_one({"_id": ObjectId(id)})
+    if evt:
+        await db.users.update_one(
+            {"_id": ObjectId(evt['photographerId'])}, 
+            {"$inc": {"totalPhotosCount": len(photos_data)}}
+        )
 
-    # Trigger AI Service
+    # Trigger AI
     background_tasks.add_task(trigger_ai_service, id)
-
-    # Fetch created photos
-    created_photos = await db.photos.find({"_id": {"$in": result.inserted_ids}}).to_list(None)
-    return created_photos
+    
+    # Return created
+    return await db.photos.find({"_id": {"$in": res.inserted_ids}}).to_list(None)
 
 @app.post("/api/photos/{id}/selection", response_model=Photo)
 async def toggle_selection(id: str):
     photo = await db.photos.find_one({"_id": ObjectId(id)})
-    if not photo:
-        raise HTTPException(status_code=404, detail="Photo not found")
+    if not photo: raise HTTPException(404, "Not found")
     
-    new_val = not photo.get("isSelected", False)
+    new_val = not photo.get('isSelected', False)
     await db.photos.update_one({"_id": ObjectId(id)}, {"$set": {"isSelected": new_val}})
-    
-    updated_photo = await db.photos.find_one({"_id": ObjectId(id)})
-    return updated_photo
+    return await db.photos.find_one({"_id": ObjectId(id)})
 
-@app.post("/api/events/{id}/submit-selections")
-async def submit_selections(id: str):
-    # Workflow logic stub
-    return {"message": "Selections submitted successfully"}
+@app.put("/api/photos/{id}", response_model=Photo)
+async def update_photo(id: str, updates: dict = Body(...)):
+    if '_id' in updates: del updates['_id']
+    await db.photos.update_one({"_id": ObjectId(id)}, {"$set": updates})
+    return await db.photos.find_one({"_id": ObjectId(id)})
+
+@app.delete("/api/photos/{id}")
+async def delete_photo(id: str):
+    photo = await db.photos.find_one({"_id": ObjectId(id)})
+    if photo:
+        await db.photos.delete_one({"_id": ObjectId(id)})
+        # Ideally delete physical file too, skipping for demo
+        count = await db.photos.count_documents({"eventId": photo['eventId']})
+        await db.events.update_one({"_id": ObjectId(photo['eventId'])}, {"$set": {"photoCount": count}})
+    return {"message": "Deleted"}
 
 if __name__ == "__main__":
     import uvicorn
