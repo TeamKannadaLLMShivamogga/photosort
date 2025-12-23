@@ -1,3 +1,4 @@
+
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { User, Event, Photo, SelectionStatus, PhotoReviewStatus, Service, Portfolio, UserRole, AddonRequest } from '../types';
 
@@ -13,6 +14,7 @@ interface DataContextType {
   logout: () => void;
   setActiveEvent: (event: Event | null) => void;
   refreshPhotos: () => Promise<void>;
+  refreshEvents: () => Promise<void>;
   togglePhotoSelection: (photoId: string) => void;
   submitSelections: () => Promise<void>;
   deletePhoto: (photoId: string) => Promise<void>;
@@ -46,6 +48,15 @@ export const useData = () => {
   return context;
 };
 
+// Helper to ensure 'id' exists (mapping from _id if necessary)
+const fixId = (item: any) => {
+    if (!item) return item;
+    if (item._id && !item.id) {
+        return { ...item, id: item._id };
+    }
+    return item;
+};
+
 export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [activeEvent, setActiveEvent] = useState<Event | null>(null);
@@ -77,24 +88,24 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       try {
         const res = await fetch(`${API_URL}/users`);
         const data = await res.json();
-        setUsers(data);
-      } catch (e) { console.error(e); }
+        setUsers(data.map(fixId));
+      } catch (e) { console.error("Fetch Users Error:", e); }
   };
 
   const fetchEvents = async () => {
       try {
         const res = await fetch(`${API_URL}/events`);
         const data = await res.json();
-        setEvents(data);
-      } catch (e) { console.error(e); }
+        setEvents(data.map(fixId));
+      } catch (e) { console.error("Fetch Events Error:", e); }
   };
 
   const fetchPhotos = async (eventId: string) => {
       try {
         const res = await fetch(`${API_URL}/events/${eventId}/photos`);
         const data = await res.json();
-        setPhotos(data);
-      } catch (e) { console.error(e); }
+        setPhotos(data.map(fixId));
+      } catch (e) { console.error("Fetch Photos Error:", e); }
   };
 
   const login = async (email: string) => {
@@ -105,8 +116,10 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
               body: JSON.stringify({ email })
           });
           const user = await res.json();
-          setCurrentUser(user);
-      } catch (e) { console.error(e); }
+          setCurrentUser(fixId(user));
+          // Refresh events to ensure we have the latest access rights
+          fetchEvents(); 
+      } catch (e) { console.error("Login Error:", e); }
   };
 
   const signup = async (name: string, email: string, phone: string) => {
@@ -117,7 +130,8 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
               body: JSON.stringify({ name, email, phone, role: 'PHOTOGRAPHER' })
           });
           const user = await res.json();
-          setCurrentUser(user);
+          setCurrentUser(fixId(user));
+          fetchEvents();
       } catch (e) { console.error(e); }
   };
 
@@ -129,6 +143,10 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const refreshPhotos = async () => {
       if (activeEvent) await fetchPhotos(activeEvent.id);
+  };
+
+  const refreshEvents = async () => {
+      await fetchEvents();
   };
 
   const togglePhotoSelection = async (photoId: string) => {
@@ -157,7 +175,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const deletePhoto = async (photoId: string) => {
       try {
-          await fetch(`${API_URL}/photos/${photoId}`, { method: 'DELETE' }); 
+          await fetch(`${API_URL}/photos/${photoId}`, { method: 'DELETE' });
           setPhotos(prev => prev.filter(p => p.id !== photoId));
       } catch(e) { console.error(e); }
   };
@@ -170,8 +188,9 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
               body: JSON.stringify(updates)
           });
           const updated = await res.json();
-          setEvents(prev => prev.map(e => e.id === id ? updated : e));
-          if (activeEvent?.id === id) setActiveEvent(updated);
+          const fixed = fixId(updated);
+          setEvents(prev => prev.map(e => e.id === id ? fixed : e));
+          if (activeEvent?.id === id) setActiveEvent(fixed);
       } catch (e) { console.error(e); }
   };
 
@@ -215,7 +234,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
               body: JSON.stringify(eventData)
           });
           const newEvent = await res.json();
-          setEvents(prev => [...prev, newEvent]);
+          setEvents(prev => [...prev, fixId(newEvent)]);
       } catch (e) { console.error(e); }
   };
 
@@ -223,7 +242,8 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       try {
           const res = await fetch(`${API_URL}/users/${userId}/status`, { method: 'PATCH' });
           const updated = await res.json();
-          setUsers(prev => prev.map(u => u.id === userId ? updated : u));
+          const fixed = fixId(updated);
+          setUsers(prev => prev.map(u => u.id === userId ? fixed : u));
       } catch (e) { console.error(e); }
   };
 
@@ -239,8 +259,9 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
               body: JSON.stringify(user)
           });
           const updated = await res.json();
-          setUsers(prev => prev.map(u => u.id === user.id ? updated : u));
-          if (currentUser?.id === user.id) setCurrentUser(updated);
+          const fixed = fixId(updated);
+          setUsers(prev => prev.map(u => u.id === user.id ? fixed : u));
+          if (currentUser?.id === user.id) setCurrentUser(fixed);
       } catch (e) { console.error(e); }
   };
 
@@ -255,25 +276,41 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const uploadAsset = async (file: File): Promise<string> => {
-      return new Promise((resolve) => {
-          const reader = new FileReader();
-          reader.onload = () => resolve(reader.result as string);
-          reader.readAsDataURL(file);
+      // In a real app, this would upload to S3/Cloudinary or the backend /upload endpoint
+      // Here we assume the backend handles multipart upload
+      const formData = new FormData();
+      formData.append('file', file);
+      
+      const res = await fetch(`${API_URL}/upload`, {
+          method: 'POST',
+          body: formData
       });
+      const data = await res.json();
+      return data.url;
   };
 
   const uploadRawPhotos = async (eventId: string, files: FileList) => {
+      // Create photos array from uploads
       const photoObjects = [];
+      // Use uploadAsset sequentially or parallel
       for (let i = 0; i < files.length; i++) {
           const file = files[i];
-          const url = await uploadAsset(file);
+          // We assume a dedicated endpoint or reuse generic one
+          // For bulk efficiency, usually we upload files and backend creates records
+          // Here we follow the existing pattern: upload file -> get URL -> create record
+          const formData = new FormData();
+          formData.append('file', file);
+          const res = await fetch(`${API_URL}/events/${eventId}/upload`, { method: 'POST', body: formData });
+          const data = await res.json();
+          
           photoObjects.push({
-              url,
+              url: data.url,
               tags: [],
               people: [],
-              category: 'Upload',
+              category: 'General',
               originalSize: file.size,
-              quality: 'high'
+              quality: 'high',
+              originalFilename: data.originalFilename
           });
       }
       
@@ -286,7 +323,8 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const uploadBulkEditedPhotos = async (eventId: string, files: FileList) => {
-      // Mock implementation
+      // Implementation for edits would involve matching filenames
+      // Similar to uploadRawPhotos but updating 'editedUrl'
       console.log("Bulk edit upload not fully implemented in mock.");
   };
 
@@ -334,6 +372,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       logout,
       setActiveEvent,
       refreshPhotos,
+      refreshEvents,
       togglePhotoSelection,
       submitSelections,
       deletePhoto,
