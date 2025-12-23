@@ -2,7 +2,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { 
   Grid2X2, Sparkles, User, Calendar, Tag, Check, Filter, 
-  X, ChevronRight, Star, CheckCircle2, Image as ImageIcon, RotateCcw, Trash2, Edit2, UploadCloud, Lock, Unlock, AlertCircle, Download, Clock, Send, List, LayoutList
+  X, ChevronRight, Star, CheckCircle2, Image as ImageIcon, RotateCcw, Trash2, Edit2, UploadCloud, Lock, Unlock, AlertCircle, Download, Clock, Send, List, LayoutList, Users
 } from 'lucide-react';
 import { useData } from '../../context/DataContext';
 import { Photo, SelectionStatus } from '../../types';
@@ -39,6 +39,7 @@ const GalleryView: React.FC<GalleryViewProps> = ({ initialTab, isPhotographer, o
   
   // Status Update Modal State
   const [isStatusModalOpen, setIsStatusModalOpen] = useState(false);
+  const [isPeopleModalOpen, setIsPeopleModalOpen] = useState(false);
   const [deliveryDate, setDeliveryDate] = useState('');
   const [workflowStatus, setWorkflowStatus] = useState<SelectionStatus>('editing');
 
@@ -89,6 +90,15 @@ const GalleryView: React.FC<GalleryViewProps> = ({ initialTab, isPhotographer, o
     events: activeEvent?.subEvents.map(s => s.name) || [],
     tags: Array.from(new Set(eventPhotos.map(p => p.category)))
   }), [eventPhotos, activeEvent]);
+
+  // Sort people by photo count (Descending)
+  const sortedPeople = useMemo(() => {
+      return [...filterOptions.people].sort((a, b) => {
+          const countA = eventPhotos.filter(p => p.people.includes(a)).length;
+          const countB = eventPhotos.filter(p => p.people.includes(b)).length;
+          return countB - countA;
+      });
+  }, [filterOptions.people, eventPhotos]);
 
   const peopleThumbnails = useMemo(() => {
     const map: Record<string, string> = {};
@@ -261,26 +271,41 @@ const GalleryView: React.FC<GalleryViewProps> = ({ initialTab, isPhotographer, o
 
                {/* Dynamic Filter Chips based on subTab */}
                <div className="flex-1 flex flex-wrap gap-2 items-center">
-                   {subTab === 'people' && filterOptions.people.map(person => (
-                       <button
-                           key={person}
-                           onClick={() => toggleFilter('people', person)}
-                           className={`flex items-center gap-2 pr-3 pl-1 py-1 rounded-full border transition-all ${
-                               selectedFilters.people.includes(person) 
-                               ? 'bg-indigo-50 border-indigo-200 text-indigo-700' 
-                               : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
-                           }`}
-                       >
-                           <img src={peopleThumbnails[person] || `https://ui-avatars.com/api/?name=${person}`} className="w-6 h-6 rounded-full object-cover" alt="" />
-                           <span className="text-[10px] font-bold uppercase tracking-wider">{person}</span>
-                           {isPhotographer && (
-                               <Edit2 
-                                onClick={(e) => { e.stopPropagation(); setEditPersonName({ old: person, new: person }); }} 
-                                className="w-3 h-3 opacity-50 hover:opacity-100" 
-                               />
+                   {/* Top 4 People Display */}
+                   {subTab === 'people' && (
+                       <>
+                           {sortedPeople.slice(0, 4).map(person => (
+                               <button
+                                   key={person}
+                                   onClick={() => toggleFilter('people', person)}
+                                   className={`flex items-center gap-2 pr-3 pl-1 py-1 rounded-full border transition-all ${
+                                       selectedFilters.people.includes(person) 
+                                       ? 'bg-indigo-50 border-indigo-200 text-indigo-700' 
+                                       : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
+                                   }`}
+                               >
+                                   <img src={peopleThumbnails[person] || `https://ui-avatars.com/api/?name=${person}`} className="w-6 h-6 rounded-full object-cover" alt="" />
+                                   <span className="text-[10px] font-bold uppercase tracking-wider">{person}</span>
+                                   {isPhotographer && (
+                                       <Edit2 
+                                        onClick={(e) => { e.stopPropagation(); setEditPersonName({ old: person, new: person }); }} 
+                                        className="w-3 h-3 opacity-50 hover:opacity-100" 
+                                       />
+                                   )}
+                               </button>
+                           ))}
+                           
+                           {/* View All Button */}
+                           {sortedPeople.length > 4 && (
+                               <button 
+                                   onClick={() => setIsPeopleModalOpen(true)}
+                                   className="flex items-center gap-1.5 px-4 py-2 rounded-full border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 text-[10px] font-bold uppercase tracking-wider transition-all"
+                               >
+                                   <Users className="w-3 h-3" /> View All ({sortedPeople.length})
+                               </button>
                            )}
-                       </button>
-                   ))}
+                       </>
+                   )}
 
                    {subTab === 'events' && filterOptions.events.map(evt => (
                        <button
@@ -425,7 +450,7 @@ const GalleryView: React.FC<GalleryViewProps> = ({ initialTab, isPhotographer, o
 
        {/* Rename Modal */}
        {editPersonName && (
-           <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+           <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
                <div className="bg-white p-6 rounded-3xl w-full max-w-sm space-y-4 shadow-2xl">
                    <h3 className="font-bold text-slate-900">Rename Person</h3>
                    <input 
@@ -437,6 +462,52 @@ const GalleryView: React.FC<GalleryViewProps> = ({ initialTab, isPhotographer, o
                    <div className="flex gap-2">
                        <button onClick={() => setEditPersonName(null)} className="flex-1 py-3 text-slate-500 hover:bg-slate-50 rounded-xl font-bold">Cancel</button>
                        <button onClick={handleRenamePerson} className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-bold">Save</button>
+                   </div>
+               </div>
+           </div>
+       )}
+
+       {/* People Filter Modal */}
+       {isPeopleModalOpen && (
+           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+               <div className="bg-white rounded-[2.5rem] w-full max-w-4xl max-h-[85vh] flex flex-col shadow-2xl overflow-hidden">
+                   <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-white sticky top-0 z-10">
+                       <div>
+                           <h3 className="text-xl font-black text-slate-900 uppercase tracking-tight">People Detected</h3>
+                           <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">{sortedPeople.length} Unique Faces Found</p>
+                       </div>
+                       <button onClick={() => setIsPeopleModalOpen(false)} className="p-2 hover:bg-slate-50 rounded-full text-slate-400 hover:text-slate-900 transition-colors">
+                           <X className="w-6 h-6" />
+                       </button>
+                   </div>
+                   <div className="flex-1 overflow-y-auto p-6 bg-slate-50">
+                       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                           {sortedPeople.map(person => {
+                               const count = eventPhotos.filter(p => p.people.includes(person)).length;
+                               const isSelected = selectedFilters.people.includes(person);
+                               return (
+                                   <div 
+                                       key={person}
+                                       onClick={() => toggleFilter('people', person)}
+                                       className={`bg-white p-3 rounded-2xl border cursor-pointer transition-all flex items-center gap-3 hover:shadow-md ${
+                                           isSelected ? 'border-indigo-500 ring-2 ring-indigo-100' : 'border-slate-100 hover:border-indigo-200'
+                                       }`}
+                                   >
+                                       <img src={peopleThumbnails[person] || `https://ui-avatars.com/api/?name=${person}`} className="w-10 h-10 rounded-xl object-cover border border-slate-100" alt="" />
+                                       <div className="min-w-0">
+                                           <p className={`text-xs font-bold truncate ${isSelected ? 'text-indigo-600' : 'text-slate-700'}`}>{person}</p>
+                                           <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">{count} Photos</p>
+                                       </div>
+                                       {isSelected && <CheckCircle2 className="w-4 h-4 text-indigo-600 ml-auto shrink-0" />}
+                                   </div>
+                               );
+                           })}
+                       </div>
+                   </div>
+                   <div className="p-4 bg-white border-t border-slate-100 flex justify-end">
+                       <button onClick={() => setIsPeopleModalOpen(false)} className="px-6 py-3 bg-slate-900 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-black">
+                           Done
+                       </button>
                    </div>
                </div>
            </div>
