@@ -9,6 +9,7 @@ python-dotenv==1.0.1
 email-validator==2.1.0.post1
 dnspython==2.6.1
 deepface==0.0.83
+tensorflow==2.15.0
 tf-keras==2.15.0
 opencv-python==4.9.0.80
 chromadb==0.4.22
