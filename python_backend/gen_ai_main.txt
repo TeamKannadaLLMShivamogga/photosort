@@ -1,5 +1,9 @@
 
 import os
+# Fix for "Descriptors cannot be created directly" error (Protobuf/Tensorflow mismatch)
+# This must be set before importing deepface/tensorflow
+os.environ["PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION"] = "python"
+
 import asyncio
 import random
 import traceback
