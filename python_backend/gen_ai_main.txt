@@ -2,12 +2,14 @@
 import os
 import asyncio
 import random
+import traceback
 from typing import Optional, List, Dict
 
 from fastapi import FastAPI, BackgroundTasks
 from pydantic import BaseModel
 from motor.motor_asyncio import AsyncIOMotorClient
 from bson import ObjectId
+from bson.errors import InvalidId
 from dotenv import load_dotenv
 
 # Import our new service
@@ -19,11 +21,23 @@ MONGO_URL = os.getenv("MONGODB_URL", "mongodb://localhost:27017")
 DB_NAME = "photosort"
 UPLOAD_DIR = "uploads"
 
-client = AsyncIOMotorClient(MONGO_URL)
-db = client[DB_NAME]
+# Ensure DB connection
+try:
+    client = AsyncIOMotorClient(MONGO_URL)
+    db = client[DB_NAME]
+    print(f"Connected to MongoDB at {MONGO_URL}")
+except Exception as e:
+    print(f"Failed to connect to MongoDB: {e}")
 
 app = FastAPI()
-face_service = FaceService(upload_dir=UPLOAD_DIR)
+
+# Initialize Face Service
+try:
+    face_service = FaceService(upload_dir=UPLOAD_DIR)
+    print("FaceService initialized successfully")
+except Exception as e:
+    print(f"Failed to initialize FaceService: {e}")
+    face_service = None
 
 class ProcessEventRequest(BaseModel):
     force_reprocess: bool = False
@@ -36,92 +50,139 @@ class AiProcessResponse(BaseModel):
 # --- Logic ---
 
 async def run_ai_processing(event_id: str):
-    print(f"AI Service: Starting processing for {event_id}")
+    print(f"AI Service: Starting processing thread for event_id: {event_id}")
     
-    # 1. Fetch Context
-    event = await db.events.find_one({"_id": ObjectId(event_id)})
-    if not event:
-        print(f"Event {event_id} not found")
+    if not face_service:
+        print("AI Service Error: FaceService is not initialized.")
         return
 
-    # 2. Fetch Unprocessed
-    cursor = db.photos.find({"eventId": event_id, "isAiProcessed": False})
-    photos = await cursor.to_list(None)
-    
-    print(f"AI Service: Processing {len(photos)} images...")
-
-    tags_pool = ["Happy", "Candid", "Decor", "Dance", "Food", "Group", "Portrait", "Ritual", "Outdoors"]
-
-    for index, photo in enumerate(photos):
-        print(f"AI Service: Processing photo {index + 1}/{len(photos)} - ID: {photo['_id']}")
-        
-        # Process Face Recognition
+    try:
+        # 1. Validate ID
         try:
-            detected_people, has_quality_face = face_service.process_image(photo['url'], event_id)
-            print(f"   -> Detected: {detected_people}")
-        except Exception as e:
-            print(f"   -> Face processing failed for {photo['_id']}: {e}")
+            oid = ObjectId(event_id)
+        except InvalidId:
+            print(f"AI Service Error: Invalid Event ID format: {event_id}")
+            return
+
+        # 2. Fetch Context
+        print(f"AI Service: Fetching event details for {oid}...")
+        event = await db.events.find_one({"_id": oid})
+        if not event:
+            print(f"AI Service Error: Event document not found in DB for ID {event_id}")
+            return
+        print(f"AI Service: Found event '{event.get('name')}'")
+
+        # 3. Fetch Unprocessed
+        print("AI Service: Querying unprocessed photos...")
+        # Check count first
+        pending_count = await db.photos.count_documents({"eventId": event_id, "isAiProcessed": False})
+        print(f"AI Service: Pending photos count in DB: {pending_count}")
+
+        if pending_count == 0:
+            print("AI Service: No photos to process. Exiting.")
+            return
+
+        cursor = db.photos.find({"eventId": event_id, "isAiProcessed": False})
+        photos = await cursor.to_list(length=1000) # Limit batch size to prevent memory issues
+        
+        print(f"AI Service: Batch fetched {len(photos)} photos. Starting analysis loop...")
+
+        tags_pool = ["Happy", "Candid", "Decor", "Dance", "Food", "Group", "Portrait", "Ritual", "Outdoors"]
+
+        for index, photo in enumerate(photos):
+            photo_id = photo.get('_id')
+            url = photo.get('url', 'unknown')
+            print(f"AI Service: [{index + 1}/{len(photos)}] Processing Photo ID: {photo_id} | URL: {url}")
+            
+            # Process Face Recognition
             detected_people = []
             has_quality_face = False
+            
+            try:
+                print(f"   -> Calling FaceService for {url}...")
+                detected_people, has_quality_face = face_service.process_image(url, event_id)
+                print(f"   -> FaceService Result: People={detected_people}, Quality={has_quality_face}")
+            except Exception as e:
+                print(f"   -> ERROR in FaceService for {photo_id}: {e}")
+                traceback.print_exc()
 
-        # --- Metadata Generation ---
+            # --- Metadata Generation ---
+            
+            # A. Category (Sub-event classification)
+            category = "General"
+            if event.get('subEvents'):
+                # Simple timestamp matching could go here, or random for demo
+                try:
+                    category = random.choice(event["subEvents"])["name"]
+                except:
+                    pass
+
+            # B. Tags
+            tags = []
+            if has_quality_face:
+                tags.append("Portrait")
+            if len(detected_people) > 2:
+                tags.append("Group")
+            
+            # Random filler tags for demo vibrancy
+            tags.extend(random.sample(tags_pool, k=random.randint(1, 2)))
+            
+            # C. Quality Score (AI Pick)
+            is_ai_pick = has_quality_face and random.random() > 0.3
+            quality = 'high' if is_ai_pick else 'medium'
+
+            # 4. Update Photo in DB
+            update_fields = {
+                "isAiProcessed": True,
+                "category": category,
+                "tags": list(set(tags)),
+                "people": detected_people,
+                "isAiPick": is_ai_pick,
+                "quality": quality
+            }
+
+            try:
+                await db.photos.update_one(
+                    {"_id": photo_id},
+                    {"$set": update_fields}
+                )
+                print(f"   -> DB Updated for {photo_id}")
+            except Exception as e:
+                print(f"   -> DB Update Failed for {photo_id}: {e}")
         
-        # A. Category (Sub-event classification)
-        category = "General"
-        if event.get('subEvents'):
-            # Simple timestamp matching could go here, or random for demo
-            category = random.choice(event["subEvents"])["name"]
+        # 5. Sync Face Registry to Event
+        print("AI Service: Syncing face registry...")
+        try:
+            all_faces = face_service.get_event_faces(event_id)
+            if all_faces:
+                print(f"AI Service: Updating Event Face Registry with {len(all_faces)} people")
+                await db.events.update_one(
+                    {"_id": oid},
+                    {"$set": {"faces": all_faces}}
+                )
+            else:
+                print("AI Service: No faces found to sync.")
+        except Exception as e:
+            print(f"AI Service Error during Face Sync: {e}")
 
-        # B. Tags
-        tags = []
-        if has_quality_face:
-            tags.append("Portrait")
-        if len(detected_people) > 2:
-            tags.append("Group")
-        
-        # Random filler tags for demo vibrancy
-        tags.extend(random.sample(tags_pool, k=random.randint(1, 2)))
-        
-        # C. Quality Score (AI Pick)
-        is_ai_pick = has_quality_face and random.random() > 0.3
-        quality = 'high' if is_ai_pick else 'medium'
+        print(f"AI Service: Completed processing for event {event_id}")
 
-        # 4. Update Photo in DB
-        update_fields = {
-            "isAiProcessed": True,
-            "category": category,
-            "tags": list(set(tags)),
-            "people": detected_people,
-            "isAiPick": is_ai_pick,
-            "quality": quality
-        }
-
-        await db.photos.update_one(
-            {"_id": photo["_id"]},
-            {"$set": update_fields}
-        )
-    
-    # 5. Sync Face Registry to Event
-    # This ensures the UI has a map of "Person 1" -> "Thumbnail URL"
-    all_faces = face_service.get_event_faces(event_id)
-    if all_faces:
-        print(f"AI Service: Updating Event Face Registry with {len(all_faces)} people")
-        await db.events.update_one(
-            {"_id": ObjectId(event_id)},
-            {"$set": {"faces": all_faces}}
-        )
-
-    print(f"AI Service: Completed {event_id}")
+    except Exception as e:
+        print(f"AI Service CRITICAL FAILURE: {e}")
+        traceback.print_exc()
 
 # --- Routes ---
 
 @app.get("/health")
 def health_check():
-    return {"status": "ok", "mode": "Active Inference (DeepFace/Chroma)"}
+    status = "Active" if face_service else "Degraded (No FaceService)"
+    return {"status": status, "mode": "Active Inference (DeepFace/Chroma)"}
 
 @app.post("/process-event/{event_id}", response_model=AiProcessResponse)
 async def process_event(event_id: str, background_tasks: BackgroundTasks):
+    print(f"API: Received trigger for event {event_id}")
     count = await db.photos.count_documents({"eventId": event_id, "isAiProcessed": False})
+    print(f"API: Found {count} unprocessed photos. Queueing background task.")
     background_tasks.add_task(run_ai_processing, event_id)
     return AiProcessResponse(message="Queued", event_id=event_id, tasks_queued=count)
 

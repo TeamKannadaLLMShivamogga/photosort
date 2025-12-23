@@ -12,18 +12,23 @@ from PIL import Image
 # Setup ChromaDB
 CHROMA_DB_DIR = "chroma_db"
 os.makedirs(CHROMA_DB_DIR, exist_ok=True)
+print(f"FaceService: ChromaDB path set to {os.path.abspath(CHROMA_DB_DIR)}")
 chroma_client = chromadb.PersistentClient(path=CHROMA_DB_DIR)
 
 class FaceService:
     def __init__(self, upload_dir="uploads"):
-        self.upload_dir = upload_dir
-        self.faces_dir = os.path.join(upload_dir, "faces")
+        self.upload_dir = os.path.abspath(upload_dir)
+        self.faces_dir = os.path.join(self.upload_dir, "faces")
         os.makedirs(self.faces_dir, exist_ok=True)
+        print(f"FaceService initialized. Upload root: {self.upload_dir}")
 
     def get_collection(self, event_id: str):
         """Get or create a vector collection for the specific event."""
         # Chroma collection names must be short and alphanumeric
-        safe_name = f"evt_{event_id}"[-63:] 
+        safe_name = f"evt_{event_id}"[-63:]
+        # Sanitize name just in case
+        safe_name = "".join(c for c in safe_name if c.isalnum() or c in ('-', '_'))
+        if not safe_name: safe_name = "default_collection"
         return chroma_client.get_or_create_collection(name=safe_name, metadata={"hnsw:space": "cosine"})
 
     def process_image(self, image_path: str, event_id: str) -> Tuple[List[str], bool]:
@@ -32,28 +37,41 @@ class FaceService:
         Returns: (List of Names, IsHighQualityFacePresent)
         """
         # --- FIX: Handle URL path vs File Path ---
-        # DB has "/uploads/xyz.jpg", System needs "uploads/xyz.jpg"
+        # DB has "/uploads/xyz.jpg" or "uploads/xyz.jpg" or just "xyz.jpg" if older data
+        # System needs absolute path for DeepFace usually, or relative to cwd.
+        
         clean_path = image_path.strip()
-        if clean_path.startswith("/uploads/"):
-            clean_path = clean_path.replace("/uploads/", "", 1)
-        elif clean_path.startswith("uploads/"):
+        # Remove leading slash
+        if clean_path.startswith("/"):
+            clean_path = clean_path[1:]
+            
+        # If it starts with "uploads/", remove it because self.upload_dir already has it? 
+        # No, self.upload_dir is "uploads" (cwd/uploads).
+        # If clean_path is "uploads/foo.jpg", joining them makes "uploads/uploads/foo.jpg"
+        
+        if clean_path.startswith("uploads/"):
             clean_path = clean_path.replace("uploads/", "", 1)
             
         full_path = os.path.join(self.upload_dir, clean_path)
         
-        print(f"DEBUG: Processing Image Path: {full_path}")
+        # print(f"DEBUG: Resolving path. Input: {image_path} -> Full: {full_path}")
 
         if not os.path.exists(full_path):
-            print(f"ERROR: Image file not found at: {full_path}")
-            return [], False
+            print(f"ERROR: Image file NOT found at: {full_path}")
+            # Fallback: try checking relative to cwd directly
+            if os.path.exists(image_path.lstrip('/')):
+                 print(f"DEBUG: Found file at relative path instead: {image_path.lstrip('/')}")
+                 full_path = image_path.lstrip('/')
+            else:
+                 return [], False
 
         try:
             # DeepFace.represent returns a list of dictionaries
-            # Each dict: {'embedding': [...], 'facial_area': {'x':, 'y':, 'w':, 'h':}, 'face_confidence': ...}
             # We use "Facenet512" for high accuracy embeddings (512 dimensions)
-            # We use "opencv" detector for speed and CPU compatibility (no dlib required)
+            # We use "opencv" or "ssd" detector. OpenCV is fastest/easiest.
             # enforce_detection=True skips images with no faces (raises ValueError)
-            print(f"DEBUG: Running DeepFace on {clean_path}...")
+            
+            # print(f"DEBUG: Calling DeepFace.represent on {full_path}...")
             faces = DeepFace.represent(
                 img_path=full_path, 
                 model_name="Facenet512", 
@@ -61,13 +79,13 @@ class FaceService:
                 enforce_detection=True,
                 align=True
             )
-            print(f"DEBUG: Faces found: {len(faces)}")
+            # print(f"DEBUG: DeepFace returned {len(faces)} faces.")
         except ValueError:
             # No face detected
-            print("DEBUG: No faces detected in image.")
+            # print("DEBUG: No faces detected (ValueError from DeepFace).")
             return [], False
         except Exception as e:
-            print(f"ERROR: DeepFace processing error: {e}")
+            print(f"ERROR: DeepFace exception: {e}")
             return [], False
 
         collection = self.get_collection(event_id)
@@ -78,14 +96,12 @@ class FaceService:
         for i, face_obj in enumerate(faces):
             embedding = face_obj['embedding']
             area = face_obj['facial_area']
-            confidence = face_obj.get('face_confidence', 0)
-
-            # Basic quality check based on resolution
+            
+            # DeepFace area keys: x, y, w, h
             if area['w'] > 80 and area['h'] > 80:
                 high_quality = True
 
             # Query Vector DB
-            # ChromaDB expects list of lists for embeddings
             results = collection.query(
                 query_embeddings=[embedding],
                 n_results=1
@@ -94,22 +110,20 @@ class FaceService:
             person_name = None
             
             # Check distance threshold (Cosine distance)
-            # For Facenet512, a threshold around 0.4 - 0.5 is usually good for DeepFace
             if results['ids'] and results['ids'][0] and results['distances'] and results['distances'][0]:
                 distance = results['distances'][0][0]
                 if distance < 0.4: # Match threshold
                     person_name = results['metadatas'][0][0]['name']
-                    print(f"DEBUG: Face {i} matched to {person_name} (dist: {distance:.4f})")
+                    # print(f"DEBUG: Match found: {person_name} (dist: {distance:.4f})")
 
             # If new person
             if not person_name:
                 person_id = str(uuid.uuid4())
                 existing_count = collection.count()
                 person_name = f"Person {existing_count + 1}"
-                print(f"DEBUG: New face detected. Created {person_name}")
+                print(f"DEBUG: New Face Cluster Created: {person_name}")
                 
-                # Save Thumbnail (Needs original image to crop)
-                # Load image with PIL to crop, safer than cv2 for file operations
+                # Save Thumbnail
                 try:
                     thumb_url = self._save_face_thumbnail(full_path, area, event_id, person_name)
                 except Exception as e:
@@ -132,32 +146,37 @@ class FaceService:
         """Crops face and saves to disk using DeepFace coordinates."""
         x, y, w, h = area['x'], area['y'], area['w'], area['h']
         
-        with Image.open(image_full_path) as img:
-            width, height = img.size
-            
-            # Add padding (20%)
-            pad_w = int(w * 0.2)
-            pad_h = int(h * 0.2)
-            
-            left = max(0, x - pad_w)
-            top = max(0, y - pad_h)
-            right = min(width, x + w + pad_w)
-            bottom = min(height, y + h + pad_h)
-            
-            face_crop = img.crop((left, top, right, bottom))
-            
-            # Directory
-            event_face_dir = os.path.join(self.faces_dir, event_id)
-            os.makedirs(event_face_dir, exist_ok=True)
-            
-            # Sanitize filename
-            safe_name = "".join([c for c in person_name if c.isalnum() or c in (' ', '-', '_')]).strip()
-            filename = f"{safe_name}.jpg"
-            save_path = os.path.join(event_face_dir, filename)
-            
-            face_crop.save(save_path)
-            
-            return f"/uploads/faces/{event_id}/{filename}"
+        try:
+            with Image.open(image_full_path) as img:
+                width, height = img.size
+                
+                # Add padding (20%)
+                pad_w = int(w * 0.2)
+                pad_h = int(h * 0.2)
+                
+                left = max(0, x - pad_w)
+                top = max(0, y - pad_h)
+                right = min(width, x + w + pad_w)
+                bottom = min(height, y + h + pad_h)
+                
+                face_crop = img.crop((left, top, right, bottom))
+                
+                # Directory
+                event_face_dir = os.path.join(self.faces_dir, event_id)
+                os.makedirs(event_face_dir, exist_ok=True)
+                
+                # Sanitize filename
+                safe_name = "".join([c for c in person_name if c.isalnum() or c in (' ', '-', '_')]).strip()
+                filename = f"{safe_name}.jpg"
+                save_path = os.path.join(event_face_dir, filename)
+                
+                face_crop.save(save_path)
+                
+                # Return web-accessible path
+                return f"/uploads/faces/{event_id}/{filename}"
+        except Exception as e:
+            print(f"Error saving thumbnail: {e}")
+            return ""
 
     def get_event_faces(self, event_id: str) -> Dict[str, str]:
         """Retrieve all known faces (Name -> Thumbnail) for an event from ChromaDB metadata."""
