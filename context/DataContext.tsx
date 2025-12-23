@@ -22,7 +22,9 @@ interface DataContextType {
   deleteEvent: (eventId: string) => Promise<void>;
   updateEventWorkflow: (eventId: string, status: SelectionStatus, deliveryDate?: string) => Promise<void>;
   deletePhoto: (photoId: string) => Promise<void>;
+  deleteMultiplePhotos: (photoIds: string[]) => Promise<void>;
   togglePhotoSelection: (photoId: string) => Promise<void>;
+  selectMultiplePhotos: (photoIds: string[], select: boolean) => Promise<void>;
   submitSelections: () => Promise<void>;
   renamePersonInEvent: (eventId: string, oldName: string, newName: string) => Promise<void>;
   uploadAsset: (file: File) => Promise<string>;
@@ -258,6 +260,23 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       } catch(e) { console.error(e); }
   };
 
+  const deleteMultiplePhotos = async (photoIds: string[]) => {
+      try {
+          // Optimistic UI Update
+          setPhotos(prev => prev.filter(p => !photoIds.includes(p.id)));
+          setSelectedPhotos(prev => {
+              const next = new Set(prev);
+              photoIds.forEach(id => next.delete(id));
+              return next;
+          });
+          
+          // Parallel Requests
+          await Promise.all(photoIds.map(id => 
+              fetch(`${API_URL}/photos/${id}`, { method: 'DELETE' })
+          ));
+      } catch(e) { console.error(e); }
+  };
+
   const togglePhotoSelection = async (photoId: string) => {
       const newSelected = new Set(selectedPhotos);
       if (newSelected.has(photoId)) newSelected.delete(photoId);
@@ -268,6 +287,32 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           await fetch(`${API_URL}/photos/${photoId}/selection`, { method: 'POST' });
           setPhotos(photos.map(p => p.id === photoId ? { ...p, isSelected: newSelected.has(photoId) } : p));
       } catch (e) { console.error(e); }
+  };
+
+  const selectMultiplePhotos = async (photoIds: string[], select: boolean) => {
+      const newSelected = new Set(selectedPhotos);
+      const apiCalls = [];
+
+      for (const id of photoIds) {
+          // Only update if state changes to avoid unnecessary API calls
+          if (select && !newSelected.has(id)) {
+              newSelected.add(id);
+              apiCalls.push(fetch(`${API_URL}/photos/${id}/selection`, { method: 'POST' }));
+          } else if (!select && newSelected.has(id)) {
+              newSelected.delete(id);
+              apiCalls.push(fetch(`${API_URL}/photos/${id}/selection`, { method: 'POST' }));
+          }
+      }
+
+      setSelectedPhotos(newSelected);
+      setPhotos(photos.map(p => ({
+          ...p,
+          isSelected: newSelected.has(p.id)
+      })));
+
+      try {
+          await Promise.all(apiCalls);
+      } catch(e) { console.error("Bulk selection failed", e); }
   };
 
   const submitSelections = async () => {
@@ -495,7 +540,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     <DataContext.Provider value={{
       currentUser, users, events, activeEvent, photos, selectedPhotos, isLoading, setActiveEvent,
       login, signup, logout, updateUser, addEvent, updateEvent, deleteEvent, updateEventWorkflow,
-      deletePhoto, togglePhotoSelection, submitSelections, renamePersonInEvent,
+      deletePhoto, deleteMultiplePhotos, togglePhotoSelection, selectMultiplePhotos, submitSelections, renamePersonInEvent,
       uploadAsset, uploadRawPhotos, uploadBulkEditedPhotos, resetDatabase,
       requestAddon, addPhotoComment, updatePhotoReviewStatus, approveAllEdits,
       updateUserServices, updateUserPortfolio, toggleUserStatus, refreshPhotos, downloadPhoto, recordPayment
