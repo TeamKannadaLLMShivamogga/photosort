@@ -52,14 +52,15 @@ async def run_ai_processing(event_id: str):
 
     tags_pool = ["Happy", "Candid", "Decor", "Dance", "Food", "Group", "Portrait", "Ritual", "Outdoors"]
 
-    for photo in photos:
+    for index, photo in enumerate(photos):
+        print(f"AI Service: Processing photo {index + 1}/{len(photos)} - ID: {photo['_id']}")
+        
         # Process Face Recognition
-        # This is a blocking CPU operation, usually handled by a worker queue (Celery). 
-        # For this simple backend, we run it directly in the loop.
         try:
             detected_people, has_quality_face = face_service.process_image(photo['url'], event_id)
+            print(f"   -> Detected: {detected_people}")
         except Exception as e:
-            print(f"Face processing failed for {photo['_id']}: {e}")
+            print(f"   -> Face processing failed for {photo['_id']}: {e}")
             detected_people = []
             has_quality_face = False
 
@@ -82,7 +83,6 @@ async def run_ai_processing(event_id: str):
         tags.extend(random.sample(tags_pool, k=random.randint(1, 2)))
         
         # C. Quality Score (AI Pick)
-        # Real logic: if image is sharp and has a high-quality face found
         is_ai_pick = has_quality_face and random.random() > 0.3
         quality = 'high' if is_ai_pick else 'medium'
 
@@ -105,6 +105,7 @@ async def run_ai_processing(event_id: str):
     # This ensures the UI has a map of "Person 1" -> "Thumbnail URL"
     all_faces = face_service.get_event_faces(event_id)
     if all_faces:
+        print(f"AI Service: Updating Event Face Registry with {len(all_faces)} people")
         await db.events.update_one(
             {"_id": ObjectId(event_id)},
             {"$set": {"faces": all_faces}}
@@ -116,7 +117,7 @@ async def run_ai_processing(event_id: str):
 
 @app.get("/health")
 def health_check():
-    return {"status": "ok", "mode": "Active Inference (dlib/chroma)"}
+    return {"status": "ok", "mode": "Active Inference (DeepFace/Chroma)"}
 
 @app.post("/process-event/{event_id}", response_model=AiProcessResponse)
 async def process_event(event_id: str, background_tasks: BackgroundTasks):

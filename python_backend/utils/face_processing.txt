@@ -31,9 +31,20 @@ class FaceService:
         Detects faces, generates embeddings, clusters them, and returns person names.
         Returns: (List of Names, IsHighQualityFacePresent)
         """
-        full_path = os.path.join(self.upload_dir, image_path.lstrip('/'))
+        # --- FIX: Handle URL path vs File Path ---
+        # DB has "/uploads/xyz.jpg", System needs "uploads/xyz.jpg"
+        clean_path = image_path.strip()
+        if clean_path.startswith("/uploads/"):
+            clean_path = clean_path.replace("/uploads/", "", 1)
+        elif clean_path.startswith("uploads/"):
+            clean_path = clean_path.replace("uploads/", "", 1)
+            
+        full_path = os.path.join(self.upload_dir, clean_path)
+        
+        print(f"DEBUG: Processing Image Path: {full_path}")
+
         if not os.path.exists(full_path):
-            print(f"Image not found: {full_path}")
+            print(f"ERROR: Image file not found at: {full_path}")
             return [], False
 
         try:
@@ -42,6 +53,7 @@ class FaceService:
             # We use "Facenet512" for high accuracy embeddings (512 dimensions)
             # We use "opencv" detector for speed and CPU compatibility (no dlib required)
             # enforce_detection=True skips images with no faces (raises ValueError)
+            print(f"DEBUG: Running DeepFace on {clean_path}...")
             faces = DeepFace.represent(
                 img_path=full_path, 
                 model_name="Facenet512", 
@@ -49,11 +61,13 @@ class FaceService:
                 enforce_detection=True,
                 align=True
             )
+            print(f"DEBUG: Faces found: {len(faces)}")
         except ValueError:
             # No face detected
+            print("DEBUG: No faces detected in image.")
             return [], False
         except Exception as e:
-            print(f"DeepFace processing error: {e}")
+            print(f"ERROR: DeepFace processing error: {e}")
             return [], False
 
         collection = self.get_collection(event_id)
@@ -61,7 +75,7 @@ class FaceService:
         high_quality = False
 
         # Process each face found
-        for face_obj in faces:
+        for i, face_obj in enumerate(faces):
             embedding = face_obj['embedding']
             area = face_obj['facial_area']
             confidence = face_obj.get('face_confidence', 0)
@@ -85,12 +99,14 @@ class FaceService:
                 distance = results['distances'][0][0]
                 if distance < 0.4: # Match threshold
                     person_name = results['metadatas'][0][0]['name']
+                    print(f"DEBUG: Face {i} matched to {person_name} (dist: {distance:.4f})")
 
             # If new person
             if not person_name:
                 person_id = str(uuid.uuid4())
                 existing_count = collection.count()
                 person_name = f"Person {existing_count + 1}"
+                print(f"DEBUG: New face detected. Created {person_name}")
                 
                 # Save Thumbnail (Needs original image to crop)
                 # Load image with PIL to crop, safer than cv2 for file operations
