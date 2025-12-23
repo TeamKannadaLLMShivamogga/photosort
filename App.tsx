@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { DataProvider, useData } from './context/DataContext';
 import { UserRole, FamilyMember } from './types';
@@ -13,6 +14,7 @@ import PhotographerEventsList from './views/Photographer/EventsList';
 import PhotographerEventDetail from './views/Photographer/EventDetail';
 import PhotographerPortfolio from './views/Photographer/Portfolio';
 import AdminDashboard from './views/Admin/Dashboard';
+import LandingPage from './components/LandingPage';
 import { 
   LogIn, Camera, Bell, Search, Settings, User as UserIcon, Save, 
   Image as ImageIcon, Plus, Trash2, Upload, Heart, UserPlus, Info, Users, Menu,
@@ -29,6 +31,7 @@ const AppContent: React.FC = () => {
   const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
   const [loginEmail, setLoginEmail] = useState('');
   const [signupData, setSignupData] = useState({ name: '', email: '', phone: '' });
+  const [showAuthScreen, setShowAuthScreen] = useState(false); // Controls Landing vs Login
 
   // Profile Edit States
   const [editName, setEditName] = useState('');
@@ -159,7 +162,12 @@ const AppContent: React.FC = () => {
     }
   };
 
+  // --- Auth & Landing Logic ---
   if (!currentUser) {
+    if (!showAuthScreen) {
+        return <LandingPage onGetStarted={() => setShowAuthScreen(true)} />;
+    }
+
     return (
       <div className="min-h-screen bg-[#F9FAFB] flex items-center justify-center p-4">
         <div className="w-full max-w-md bg-white rounded-[3rem] shadow-2xl border border-slate-100 overflow-hidden animate-in fade-in zoom-in-95 duration-500">
@@ -167,7 +175,10 @@ const AppContent: React.FC = () => {
           <div className="bg-slate-900 p-8 text-center relative overflow-hidden">
              <div className="absolute top-0 left-0 w-full h-full bg-[url('https://images.unsplash.com/photo-1554048612-387768052bf7?auto=format&fit=crop&q=80')] bg-cover opacity-20"></div>
              <div className="relative z-10">
-                <div className="w-16 h-16 bg-white/10 backdrop-blur-md rounded-2xl mx-auto flex items-center justify-center border border-white/20 mb-4 shadow-xl">
+                <button onClick={() => setShowAuthScreen(false)} className="absolute left-0 top-0 text-white/50 hover:text-white text-xs font-bold uppercase tracking-widest flex items-center gap-1">
+                    <ChevronRight className="w-4 h-4 rotate-180" /> Back
+                </button>
+                <div className="w-16 h-16 bg-white/10 backdrop-blur-md rounded-2xl mx-auto flex items-center justify-center border border-white/20 mb-4 shadow-xl mt-4">
                     <Camera className="text-white w-8 h-8" />
                 </div>
                 <h1 className="text-3xl font-black text-white tracking-tight uppercase">PhotoSort Pro</h1>
