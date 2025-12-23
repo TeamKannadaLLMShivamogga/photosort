@@ -22,6 +22,7 @@ export type SelectionStatus = 'open' | 'submitted' | 'editing' | 'review' | 'acc
 export type PhotoReviewStatus = 'pending' | 'approved' | 'changes_requested';
 export type ServiceType = 'service' | 'addon';
 export type AddonStatus = 'pending' | 'approved' | 'rejected';
+export type EventTeamRole = 'CO_ADMIN' | 'MEMBER';
 
 export interface Service {
   id: string;
@@ -123,6 +124,11 @@ export interface EventTimeline {
   finalizedAt?: string;
 }
 
+export interface EventTeamMember {
+  userId: string;
+  role: EventTeamRole;
+}
+
 export interface Event {
   id: string;
   name: string;
@@ -132,7 +138,8 @@ export interface Event {
   photographerId: string;
   coverImage: string;
   photoCount: number;
-  assignedUsers: string[];
+  assignedUsers: string[]; // Client IDs
+  team?: EventTeamMember[]; // Photographer Team IDs
   subEvents: SubEvent[];
   status: 'active' | 'completed' | 'closed';
   selectionStatus: SelectionStatus; // Workflow State

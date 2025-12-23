@@ -4,9 +4,9 @@ import { useData } from '../../context/DataContext';
 import { 
   ArrowLeft, Upload, Users, Calendar, Settings, Image as ImageIcon, 
   CheckCircle, Clock, AlertTriangle, ChevronRight, Lock, Unlock, 
-  RefreshCw, Plus, Trash2, Mail, Phone, MapPin, Save, CreditCard, ChevronDown, ChevronUp, Check, Copy, Share2, FileText, Download, Printer
+  RefreshCw, Plus, Trash2, Mail, Phone, MapPin, Save, CreditCard, ChevronDown, ChevronUp, Check, Copy, Share2, FileText, Download, Printer, UserPlus, Shield
 } from 'lucide-react';
-import { SelectionStatus, SubEvent } from '../../types';
+import { SelectionStatus, SubEvent, EventTeamRole } from '../../types';
 
 interface EventDetailProps {
   onNavigate: (view: string) => void;
@@ -14,14 +14,16 @@ interface EventDetailProps {
 }
 
 const PhotographerEventDetail: React.FC<EventDetailProps> = ({ onNavigate, initialTab = 'overview' }) => {
-  const { activeEvent, photos, updateEventWorkflow, updateEvent, users, recordPayment, deleteEvent: contextDeleteEvent } = useData();
+  const { activeEvent, photos, updateEventWorkflow, updateEvent, users, recordPayment, deleteEvent: contextDeleteEvent, getEventRole, addTeamMember, removeTeamMember } = useData();
   const [activeTab, setActiveTab] = useState(initialTab);
   
   // Management States
   const [newClient, setNewClient] = useState({ name: '', email: '', phone: '' });
+  const [newTeamMember, setNewTeamMember] = useState({ email: '', role: 'MEMBER' as EventTeamRole });
   const [newSubEvent, setNewSubEvent] = useState({ name: '', date: '', location: '' });
   const [isAddingClient, setIsAddingClient] = useState(false);
   const [isAddingClientOpen, setIsAddingClientOpen] = useState(false);
+  const [isAddingTeamOpen, setIsAddingTeamOpen] = useState(false);
 
   // Payment State
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
@@ -30,6 +32,12 @@ const PhotographerEventDetail: React.FC<EventDetailProps> = ({ onNavigate, initi
   const [paymentForm, setPaymentForm] = useState({ amount: 0, date: new Date().toISOString().split('T')[0], method: 'UPI', note: '' });
 
   if (!activeEvent) return <div className="p-10 text-center">Event not found</div>;
+
+  const currentRole = getEventRole(activeEvent);
+  const canManageFinancials = currentRole === 'OWNER' || currentRole === 'CO_ADMIN';
+  const canEditEvent = currentRole === 'OWNER' || currentRole === 'CO_ADMIN';
+  const canManageTeam = currentRole === 'OWNER' || currentRole === 'CO_ADMIN';
+  const isOwner = currentRole === 'OWNER';
 
   const eventPhotos = photos.filter(p => p.eventId === activeEvent.id);
   const selectedPhotos = eventPhotos.filter(p => p.isSelected);
@@ -41,6 +49,7 @@ const PhotographerEventDetail: React.FC<EventDetailProps> = ({ onNavigate, initi
   const paidPercentage = price > 0 ? Math.min(100, Math.round((totalPaid / price) * 100)) : 0;
 
   const advanceWorkflow = (status: SelectionStatus) => {
+      if (!canEditEvent) return alert("You don't have permission to update workflow status.");
       if (confirm(`Advance workflow status to ${status}?`)) {
           updateEventWorkflow(activeEvent.id, status);
       }
@@ -99,14 +108,24 @@ const PhotographerEventDetail: React.FC<EventDetailProps> = ({ onNavigate, initi
   };
 
   const handleRemoveClient = async (userId: string) => {
+      if (!canEditEvent) return;
       if (confirm("Remove this user from the event?")) {
           const updated = activeEvent.assignedUsers.filter(id => id !== userId);
           await updateEvent(activeEvent.id, { assignedUsers: updated });
       }
   };
 
+  // --- Team Management ---
+  const handleAddTeamMember = async () => {
+      if (!newTeamMember.email) return alert("Email is required");
+      await addTeamMember(activeEvent.id, newTeamMember.email, newTeamMember.role);
+      setNewTeamMember({ email: '', role: 'MEMBER' });
+      setIsAddingTeamOpen(false);
+  };
+
   // --- SubEvent Management ---
   const handleAddSubEvent = async () => {
+      if (!canEditEvent) return;
       if (!newSubEvent.name || !newSubEvent.date) return;
       
       const newSub: SubEvent = {
@@ -122,6 +141,7 @@ const PhotographerEventDetail: React.FC<EventDetailProps> = ({ onNavigate, initi
   };
 
   const handleRemoveSubEvent = async (subEventId: string) => {
+      if (!canEditEvent) return;
       if (confirm("Delete this sub-event?")) {
           const updated = activeEvent.subEvents.filter(se => se.id !== subEventId);
           await updateEvent(activeEvent.id, { subEvents: updated });
@@ -150,11 +170,11 @@ const PhotographerEventDetail: React.FC<EventDetailProps> = ({ onNavigate, initi
   };
 
   const handleDownloadReceipt = (paymentId: string) => {
-      // Stub for receipt generation
       alert(`Downloading receipt for transaction ${paymentId}...`);
   };
 
   const handleDeleteEvent = async () => {
+      if (!isOwner) return;
       if(confirm("DANGER: This will permanently delete the event and all photos. Are you sure?")) {
           try {
              await fetch(`/api/events/${activeEvent.id}`, { method: 'DELETE' });
@@ -172,6 +192,10 @@ const PhotographerEventDetail: React.FC<EventDetailProps> = ({ onNavigate, initi
   };
 
   const assignedUserObjects = users.filter(u => activeEvent.assignedUsers.includes(u.id));
+  const teamMemberObjects = activeEvent.team?.map(tm => {
+      const user = users.find(u => u.id === tm.userId);
+      return { ...tm, user };
+  }) || [];
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500 pb-20 max-w-7xl mx-auto">
@@ -194,6 +218,9 @@ const PhotographerEventDetail: React.FC<EventDetailProps> = ({ onNavigate, initi
                       <div className={`w-2 h-2 rounded-full ${activeEvent.status === 'active' ? 'bg-green-500' : 'bg-slate-400'}`} />
                       {activeEvent.status.toUpperCase()}
                   </span>
+                  <span className="px-3 py-1 bg-indigo-50 text-indigo-600 rounded-lg border border-indigo-100 uppercase">
+                      ROLE: {currentRole}
+                  </span>
               </div>
            </div>
         </div>
@@ -215,109 +242,111 @@ const PhotographerEventDetail: React.FC<EventDetailProps> = ({ onNavigate, initi
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           <div className="lg:col-span-2 space-y-8">
-              {/* Financials Card */}
-              <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm space-y-6">
-                  <div className="flex items-center justify-between">
-                      <h3 className="font-bold text-slate-900 text-lg flex items-center gap-2">
-                          <CreditCard className="w-5 h-5 text-indigo-600" /> Financials & Payments
-                      </h3>
-                      <span className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest ${balance <= 0 ? 'bg-green-50 text-green-600' : 'bg-amber-50 text-amber-600'}`}>
-                          {balance <= 0 ? 'Paid in Full' : 'Pending Balance'}
-                      </span>
-                  </div>
+              
+              {/* Financials Card - Visible only to OWNER and CO_ADMIN */}
+              {canManageFinancials && (
+                  <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm space-y-6">
+                      <div className="flex items-center justify-between">
+                          <h3 className="font-bold text-slate-900 text-lg flex items-center gap-2">
+                              <CreditCard className="w-5 h-5 text-indigo-600" /> Financials & Payments
+                          </h3>
+                          <span className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest ${balance <= 0 ? 'bg-green-50 text-green-600' : 'bg-amber-50 text-amber-600'}`}>
+                              {balance <= 0 ? 'Paid in Full' : 'Pending Balance'}
+                          </span>
+                      </div>
 
-                  <div className="space-y-4">
-                      <div className="grid grid-cols-3 gap-4 pb-2">
-                          <div>
-                              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Total Contract</p>
-                              <p className="text-2xl font-black text-slate-900 mt-1">₹{(activeEvent.price || 0).toLocaleString()}</p>
+                      <div className="space-y-4">
+                          <div className="grid grid-cols-3 gap-4 pb-2">
+                              <div>
+                                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Total Contract</p>
+                                  <p className="text-2xl font-black text-slate-900 mt-1">₹{(activeEvent.price || 0).toLocaleString()}</p>
+                              </div>
+                              <div>
+                                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Received</p>
+                                  <p className="text-2xl font-black text-green-600 mt-1">₹{totalPaid.toLocaleString()}</p>
+                              </div>
+                              <div>
+                                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Balance Due</p>
+                                  <p className="text-2xl font-black text-amber-500 mt-1">₹{balance.toLocaleString()}</p>
+                              </div>
                           </div>
-                          <div>
-                              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Received</p>
-                              <p className="text-2xl font-black text-green-600 mt-1">₹{totalPaid.toLocaleString()}</p>
-                          </div>
-                          <div>
-                              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Balance Due</p>
-                              <p className="text-2xl font-black text-amber-500 mt-1">₹{balance.toLocaleString()}</p>
+                          
+                          <div className="space-y-1">
+                              <div className="flex justify-between text-[10px] font-black uppercase tracking-widest text-slate-400">
+                                  <span>Payment Progress</span>
+                                  <span>{paidPercentage}%</span>
+                              </div>
+                              <div className="w-full h-3 bg-slate-100 rounded-full overflow-hidden">
+                                  <div className="h-full bg-gradient-to-r from-emerald-400 to-emerald-600 transition-all duration-1000 ease-out" style={{ width: `${paidPercentage}%` }} />
+                              </div>
                           </div>
                       </div>
-                      
-                      {/* Visual Progress Bar */}
-                      <div className="space-y-1">
-                          <div className="flex justify-between text-[10px] font-black uppercase tracking-widest text-slate-400">
-                              <span>Payment Progress</span>
-                              <span>{paidPercentage}%</span>
-                          </div>
-                          <div className="w-full h-3 bg-slate-100 rounded-full overflow-hidden">
-                              <div className="h-full bg-gradient-to-r from-emerald-400 to-emerald-600 transition-all duration-1000 ease-out" style={{ width: `${paidPercentage}%` }} />
-                          </div>
+
+                      <div className="flex justify-between items-center border-t border-slate-50 pt-6">
+                          <button 
+                            onClick={() => setIsPaymentHistoryOpen(!isPaymentHistoryOpen)}
+                            className="flex items-center gap-2 text-xs font-bold text-slate-500 hover:text-slate-800 transition-colors"
+                          >
+                              {isPaymentHistoryOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />} Transaction History
+                          </button>
+                          <button 
+                            onClick={() => setIsPaymentModalOpen(true)}
+                            className="px-6 py-3 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-black flex items-center gap-2 shadow-lg"
+                          >
+                              <Plus className="w-4 h-4" /> Record Payment
+                          </button>
                       </div>
-                  </div>
 
-                  <div className="flex justify-between items-center border-t border-slate-50 pt-6">
-                      <button 
-                        onClick={() => setIsPaymentHistoryOpen(!isPaymentHistoryOpen)}
-                        className="flex items-center gap-2 text-xs font-bold text-slate-500 hover:text-slate-800 transition-colors"
-                      >
-                          {isPaymentHistoryOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />} Transaction History
-                      </button>
-                      <button 
-                        onClick={() => setIsPaymentModalOpen(true)}
-                        className="px-6 py-3 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-black flex items-center gap-2 shadow-lg"
-                      >
-                          <Plus className="w-4 h-4" /> Record Payment
-                      </button>
-                  </div>
-
-                  {isPaymentHistoryOpen && (
-                      <div className="animate-in slide-in-from-top-2">
-                          <div className="overflow-x-auto">
-                              <table className="w-full text-left">
-                                  <thead className="bg-slate-50 text-[10px] font-bold uppercase text-slate-400 tracking-widest">
-                                      <tr>
-                                          <th className="p-3 rounded-l-xl">Date</th>
-                                          <th className="p-3">Method</th>
-                                          <th className="p-3">Note</th>
-                                          <th className="p-3 text-right">Amount</th>
-                                          <th className="p-3 rounded-r-xl text-center">Actions</th>
-                                      </tr>
-                                  </thead>
-                                  <tbody className="text-xs font-bold text-slate-700">
-                                      {activeEvent.paymentHistory?.map((pay, i) => (
-                                          <tr key={i} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/50 transition-colors group">
-                                              <td className="p-3">{new Date(pay.date).toLocaleDateString()}</td>
-                                              <td className="p-3"><span className="bg-white border border-slate-200 px-2 py-1 rounded text-[10px]">{pay.method}</span></td>
-                                              <td className="p-3 text-slate-400 italic max-w-[150px] truncate">{pay.note || '-'}</td>
-                                              <td className="p-3 text-right text-emerald-600 font-black">+ ₹{pay.amount.toLocaleString()}</td>
-                                              <td className="p-3 text-center">
-                                                  <div className="flex items-center justify-center gap-2 opacity-60 group-hover:opacity-100 transition-opacity">
-                                                      <button 
-                                                        onClick={() => handleDownloadReceipt(pay.id)}
-                                                        className="p-1.5 text-indigo-500 hover:bg-indigo-50 rounded-lg transition-colors" 
-                                                        title="Download Receipt"
-                                                      >
-                                                          <Printer className="w-3.5 h-3.5" />
-                                                      </button>
-                                                      <button 
-                                                        onClick={() => handleDeletePayment(pay.id, pay.amount)}
-                                                        className="p-1.5 text-red-400 hover:bg-red-50 hover:text-red-600 rounded-lg transition-colors" 
-                                                        title="Delete Record"
-                                                      >
-                                                          <Trash2 className="w-3.5 h-3.5" />
-                                                      </button>
-                                                  </div>
-                                              </td>
+                      {isPaymentHistoryOpen && (
+                          <div className="animate-in slide-in-from-top-2">
+                              <div className="overflow-x-auto">
+                                  <table className="w-full text-left">
+                                      <thead className="bg-slate-50 text-[10px] font-bold uppercase text-slate-400 tracking-widest">
+                                          <tr>
+                                              <th className="p-3 rounded-l-xl">Date</th>
+                                              <th className="p-3">Method</th>
+                                              <th className="p-3">Note</th>
+                                              <th className="p-3 text-right">Amount</th>
+                                              <th className="p-3 rounded-r-xl text-center">Actions</th>
                                           </tr>
-                                      ))}
-                                      {(!activeEvent.paymentHistory || activeEvent.paymentHistory.length === 0) && (
-                                          <tr><td colSpan={5} className="p-6 text-center text-slate-400 italic bg-slate-50/30 rounded-xl mt-2">No payments recorded yet.</td></tr>
-                                      )}
-                                  </tbody>
-                              </table>
+                                      </thead>
+                                      <tbody className="text-xs font-bold text-slate-700">
+                                          {activeEvent.paymentHistory?.map((pay, i) => (
+                                              <tr key={i} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/50 transition-colors group">
+                                                  <td className="p-3">{new Date(pay.date).toLocaleDateString()}</td>
+                                                  <td className="p-3"><span className="bg-white border border-slate-200 px-2 py-1 rounded text-[10px]">{pay.method}</span></td>
+                                                  <td className="p-3 text-slate-400 italic max-w-[150px] truncate">{pay.note || '-'}</td>
+                                                  <td className="p-3 text-right text-emerald-600 font-black">+ ₹{pay.amount.toLocaleString()}</td>
+                                                  <td className="p-3 text-center">
+                                                      <div className="flex items-center justify-center gap-2 opacity-60 group-hover:opacity-100 transition-opacity">
+                                                          <button 
+                                                            onClick={() => handleDownloadReceipt(pay.id)}
+                                                            className="p-1.5 text-indigo-500 hover:bg-indigo-50 rounded-lg transition-colors" 
+                                                            title="Download Receipt"
+                                                          >
+                                                              <Printer className="w-3.5 h-3.5" />
+                                                          </button>
+                                                          <button 
+                                                            onClick={() => handleDeletePayment(pay.id, pay.amount)}
+                                                            className="p-1.5 text-red-400 hover:bg-red-50 hover:text-red-600 rounded-lg transition-colors" 
+                                                            title="Delete Record"
+                                                          >
+                                                              <Trash2 className="w-3.5 h-3.5" />
+                                                          </button>
+                                                      </div>
+                                                  </td>
+                                              </tr>
+                                          ))}
+                                          {(!activeEvent.paymentHistory || activeEvent.paymentHistory.length === 0) && (
+                                              <tr><td colSpan={5} className="p-6 text-center text-slate-400 italic bg-slate-50/30 rounded-xl mt-2">No payments recorded yet.</td></tr>
+                                          )}
+                                      </tbody>
+                                  </table>
+                              </div>
                           </div>
-                      </div>
-                  )}
-              </div>
+                      )}
+                  </div>
+              )}
 
               {/* Workflow Status */}
               <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm space-y-6">
@@ -344,27 +373,29 @@ const PhotographerEventDetail: React.FC<EventDetailProps> = ({ onNavigate, initi
                       </div>
                   </div>
 
-                  <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-50">
-                      {activeEvent.selectionStatus === 'submitted' && (
-                          <button onClick={() => advanceWorkflow('editing')} className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold shadow-lg hover:bg-indigo-700">
-                              Start Editing Phase
-                          </button>
-                      )}
-                      {activeEvent.selectionStatus === 'editing' && (
-                          <button onClick={() => advanceWorkflow('review')} className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold shadow-lg hover:bg-indigo-700">
-                              Submit for Review
-                          </button>
-                      )}
-                      {activeEvent.selectionStatus === 'open' ? (
-                           <button onClick={() => advanceWorkflow('submitted')} className="px-4 py-2 bg-slate-100 text-slate-600 rounded-xl text-xs font-bold hover:bg-slate-200 flex items-center gap-2">
-                               <Lock className="w-3 h-3" /> Force Lock Selection
-                           </button>
-                      ) : (
-                          <button onClick={() => advanceWorkflow('open')} className="px-4 py-2 bg-slate-100 text-slate-600 rounded-xl text-xs font-bold hover:bg-slate-200 flex items-center gap-2">
-                              <Unlock className="w-3 h-3" /> Re-open Selection
-                          </button>
-                      )}
-                  </div>
+                  {canEditEvent && (
+                      <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-50">
+                          {activeEvent.selectionStatus === 'submitted' && (
+                              <button onClick={() => advanceWorkflow('editing')} className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold shadow-lg hover:bg-indigo-700">
+                                  Start Editing Phase
+                              </button>
+                          )}
+                          {activeEvent.selectionStatus === 'editing' && (
+                              <button onClick={() => advanceWorkflow('review')} className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold shadow-lg hover:bg-indigo-700">
+                                  Submit for Review
+                              </button>
+                          )}
+                          {activeEvent.selectionStatus === 'open' ? (
+                              <button onClick={() => advanceWorkflow('submitted')} className="px-4 py-2 bg-slate-100 text-slate-600 rounded-xl text-xs font-bold hover:bg-slate-200 flex items-center gap-2">
+                                  <Lock className="w-3 h-3" /> Force Lock Selection
+                              </button>
+                          ) : (
+                              <button onClick={() => advanceWorkflow('open')} className="px-4 py-2 bg-slate-100 text-slate-600 rounded-xl text-xs font-bold hover:bg-slate-200 flex items-center gap-2">
+                                  <Unlock className="w-3 h-3" /> Re-open Selection
+                              </button>
+                          )}
+                      </div>
+                  )}
               </div>
 
               {/* Stats Grid */}
@@ -385,16 +416,77 @@ const PhotographerEventDetail: React.FC<EventDetailProps> = ({ onNavigate, initi
           </div>
 
           <div className="space-y-8">
+              {/* Team Access Management - Only OWNER and CO_ADMIN */}
+              {canManageTeam && (
+                  <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm space-y-6">
+                      <div className="flex items-center justify-between">
+                         <h3 className="font-bold text-slate-900">Photography Team</h3>
+                         <button 
+                            onClick={() => setIsAddingTeamOpen(!isAddingTeamOpen)}
+                            className="text-[10px] font-black text-indigo-600 uppercase tracking-widest bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-lg transition-colors"
+                         >
+                             {isAddingTeamOpen ? 'Close' : '+ Add Member'}
+                         </button>
+                      </div>
+
+                      <div className="space-y-4">
+                          {teamMemberObjects.map(tm => (
+                              <div key={tm.userId} className="p-3 bg-slate-50 rounded-2xl border border-slate-100 flex items-center justify-between">
+                                  <div className="flex items-center gap-3">
+                                      <img src={tm.user?.avatar || `https://ui-avatars.com/api/?name=${tm.user?.name || 'User'}`} className="w-8 h-8 rounded-full bg-white shadow-sm" alt="" />
+                                      <div>
+                                          <p className="text-xs font-bold text-slate-900">{tm.user?.name || 'Photographer'}</p>
+                                          <p className="text-[8px] font-bold bg-white px-2 py-0.5 rounded border border-slate-200 inline-block mt-0.5 text-slate-500 uppercase">{tm.role}</p>
+                                      </div>
+                                  </div>
+                                  <button onClick={() => removeTeamMember(activeEvent.id, tm.userId)} className="p-2 text-slate-300 hover:text-red-500 transition-colors">
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                              </div>
+                          ))}
+                          {teamMemberObjects.length === 0 && (
+                              <p className="text-center text-xs text-slate-400 italic py-2">No team members added. Just you.</p>
+                          )}
+                      </div>
+
+                      {isAddingTeamOpen && (
+                          <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-3 animate-in fade-in slide-in-from-top-2">
+                              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">New Member Info</p>
+                              <input 
+                                 type="email" placeholder="Photographer Email" 
+                                 className="w-full p-3 bg-white rounded-xl text-xs font-bold outline-none"
+                                 value={newTeamMember.email} onChange={e => setNewTeamMember({...newTeamMember, email: e.target.value})}
+                              />
+                              <div className="flex gap-2">
+                                  <select 
+                                    className="flex-1 p-3 bg-white rounded-xl text-xs font-bold outline-none"
+                                    value={newTeamMember.role}
+                                    onChange={e => setNewTeamMember({...newTeamMember, role: e.target.value as EventTeamRole})}
+                                  >
+                                      <option value="MEMBER">Member (Photos Only)</option>
+                                      <option value="CO_ADMIN">Co-Admin (Full Manage)</option>
+                                  </select>
+                                  <button onClick={handleAddTeamMember} className="px-4 bg-[#10B981] text-white rounded-xl font-bold hover:bg-[#059669] transition-colors">
+                                      <Plus className="w-4 h-4" />
+                                  </button>
+                              </div>
+                          </div>
+                      )}
+                  </div>
+              )}
+
               {/* Client Access Management */}
               <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm space-y-6">
                   <div className="flex items-center justify-between">
                      <h3 className="font-bold text-slate-900">Client Access</h3>
-                     <button 
-                        onClick={() => setIsAddingClientOpen(!isAddingClientOpen)}
-                        className="text-[10px] font-black text-indigo-600 uppercase tracking-widest bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-lg transition-colors"
-                     >
-                         {isAddingClientOpen ? 'Close' : '+ Add Client'}
-                     </button>
+                     {canEditEvent && (
+                         <button 
+                            onClick={() => setIsAddingClientOpen(!isAddingClientOpen)}
+                            className="text-[10px] font-black text-indigo-600 uppercase tracking-widest bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-lg transition-colors"
+                         >
+                             {isAddingClientOpen ? 'Close' : '+ Add Client'}
+                         </button>
+                     )}
                   </div>
 
                   <div className="space-y-4">
@@ -408,9 +500,11 @@ const PhotographerEventDetail: React.FC<EventDetailProps> = ({ onNavigate, initi
                                           <p className="text-[9px] text-slate-400 truncate">{user.email}</p>
                                       </div>
                                   </div>
-                                  <button onClick={() => handleRemoveClient(user.id)} className="p-2 text-slate-300 hover:text-red-500 transition-colors" title="Remove Access">
-                                      <Trash2 className="w-3.5 h-3.5" />
-                                  </button>
+                                  {canEditEvent && (
+                                      <button onClick={() => handleRemoveClient(user.id)} className="p-2 text-slate-300 hover:text-red-500 transition-colors" title="Remove Access">
+                                          <Trash2 className="w-3.5 h-3.5" />
+                                      </button>
+                                  )}
                               </div>
                               <button 
                                 onClick={() => copyInviteText(user.email)}
@@ -421,11 +515,11 @@ const PhotographerEventDetail: React.FC<EventDetailProps> = ({ onNavigate, initi
                           </div>
                       ))}
                       {assignedUserObjects.length === 0 && (
-                          <p className="text-center text-xs text-slate-400 italic py-2">No users assigned yet.</p>
+                          <p className="text-center text-xs text-slate-400 italic py-2">No clients assigned yet.</p>
                       )}
                   </div>
 
-                  {isAddingClientOpen && (
+                  {isAddingClientOpen && canEditEvent && (
                       <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-3 animate-in fade-in slide-in-from-top-2">
                           <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">New Client Info</p>
                           <input 
@@ -473,55 +567,63 @@ const PhotographerEventDetail: React.FC<EventDetailProps> = ({ onNavigate, initi
                                      </div>
                                  </div>
                              </div>
-                             <button onClick={() => handleRemoveSubEvent(sub.id)} className="p-2 text-slate-400 hover:text-red-500 hover:bg-white rounded-xl transition-all">
-                                 <Trash2 className="w-4 h-4" />
-                             </button>
+                             {canEditEvent && (
+                                 <button onClick={() => handleRemoveSubEvent(sub.id)} className="p-2 text-slate-400 hover:text-red-500 hover:bg-white rounded-xl transition-all">
+                                     <Trash2 className="w-4 h-4" />
+                                 </button>
+                             )}
                          </div>
                      ))}
                  </div>
 
-                 <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 flex flex-col gap-3">
-                     <input 
-                        type="text" placeholder="Event Name (e.g. Sangeet)" 
-                        className="w-full p-3 bg-white rounded-xl text-xs font-bold outline-none"
-                        value={newSubEvent.name} onChange={e => setNewSubEvent({...newSubEvent, name: e.target.value})}
-                     />
-                     <div className="flex gap-2">
-                        <input 
-                            type="date" 
-                            className="flex-1 p-3 bg-white rounded-xl text-xs font-bold outline-none"
-                            value={newSubEvent.date} onChange={e => setNewSubEvent({...newSubEvent, date: e.target.value})}
-                        />
-                        <button onClick={handleAddSubEvent} className="p-3 bg-slate-900 text-white rounded-xl hover:bg-black transition-colors">
-                            <Plus className="w-4 h-4" />
-                        </button>
+                 {canEditEvent && (
+                     <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 flex flex-col gap-3">
+                         <input 
+                            type="text" placeholder="Event Name (e.g. Sangeet)" 
+                            className="w-full p-3 bg-white rounded-xl text-xs font-bold outline-none"
+                            value={newSubEvent.name} onChange={e => setNewSubEvent({...newSubEvent, name: e.target.value})}
+                         />
+                         <div className="flex gap-2">
+                            <input 
+                                type="date" 
+                                className="flex-1 p-3 bg-white rounded-xl text-xs font-bold outline-none"
+                                value={newSubEvent.date} onChange={e => setNewSubEvent({...newSubEvent, date: e.target.value})}
+                            />
+                            <button onClick={handleAddSubEvent} className="p-3 bg-slate-900 text-white rounded-xl hover:bg-black transition-colors">
+                                <Plus className="w-4 h-4" />
+                            </button>
+                         </div>
                      </div>
-                 </div>
+                 )}
               </div>
 
-              {/* Quick Actions */}
-               <div className="bg-slate-900 p-8 rounded-[2.5rem] text-white shadow-xl space-y-4">
-                   <h3 className="font-bold text-white flex items-center gap-2">
-                       <Settings className="w-4 h-4" /> Quick Actions
-                   </h3>
-                   <div className="space-y-2">
-                       <button className="w-full py-3 bg-white/10 hover:bg-white/20 rounded-xl text-xs font-bold transition-colors text-left px-4">
-                           Send Selection Reminder
-                       </button>
-                       <button 
-                        onClick={() => setIsInvoiceModalOpen(true)}
-                        className="w-full py-3 bg-white/10 hover:bg-white/20 rounded-xl text-xs font-bold transition-colors text-left px-4"
-                       >
-                           Generate Invoice
-                       </button>
-                       <button 
-                        onClick={handleDeleteEvent}
-                        className="w-full py-3 bg-white/10 hover:bg-white/20 rounded-xl text-xs font-bold transition-colors text-left px-4 text-red-300 hover:text-red-200"
-                       >
-                           Delete Event
-                       </button>
+              {/* Quick Actions (Owner/Co-Admin Only) */}
+               {canManageFinancials && (
+                   <div className="bg-slate-900 p-8 rounded-[2.5rem] text-white shadow-xl space-y-4">
+                       <h3 className="font-bold text-white flex items-center gap-2">
+                           <Settings className="w-4 h-4" /> Quick Actions
+                       </h3>
+                       <div className="space-y-2">
+                           <button className="w-full py-3 bg-white/10 hover:bg-white/20 rounded-xl text-xs font-bold transition-colors text-left px-4">
+                               Send Selection Reminder
+                           </button>
+                           <button 
+                            onClick={() => setIsInvoiceModalOpen(true)}
+                            className="w-full py-3 bg-white/10 hover:bg-white/20 rounded-xl text-xs font-bold transition-colors text-left px-4"
+                           >
+                               Generate Invoice
+                           </button>
+                           {isOwner && (
+                               <button 
+                                onClick={handleDeleteEvent}
+                                className="w-full py-3 bg-white/10 hover:bg-white/20 rounded-xl text-xs font-bold transition-colors text-left px-4 text-red-300 hover:text-red-200"
+                               >
+                                   Delete Event
+                               </button>
+                           )}
+                       </div>
                    </div>
-               </div>
+               )}
           </div>
       </div>
 

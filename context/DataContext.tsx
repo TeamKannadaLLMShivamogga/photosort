@@ -1,6 +1,6 @@
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { User, Event, Photo, SelectionStatus, Service, Portfolio, AddonRequest, UserRole } from '../types';
+import { User, Event, Photo, SelectionStatus, Service, Portfolio, AddonRequest, UserRole, EventTeamRole } from '../types';
 
 const API_URL = '/api';
 
@@ -41,6 +41,9 @@ interface DataContextType {
   refreshPhotos: (eventId: string) => Promise<void>;
   downloadPhoto: (url: string, filename?: string) => void;
   recordPayment: (eventId: string, amount: number, date: string, method: string, note: string) => Promise<void>;
+  addTeamMember: (eventId: string, email: string, role: EventTeamRole) => Promise<void>;
+  removeTeamMember: (eventId: string, userId: string) => Promise<void>;
+  getEventRole: (event: Event | null) => 'OWNER' | 'CO_ADMIN' | 'MEMBER' | 'NONE';
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -536,6 +539,48 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       } catch(e) { console.error(e); alert("Failed to record payment"); }
   };
 
+  const addTeamMember = async (eventId: string, email: string, role: EventTeamRole) => {
+      try {
+          const res = await fetch(`${API_URL}/events/${eventId}/team`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ email, role })
+          });
+          if (res.ok) {
+              const updated = normalizeData(await res.json());
+              setEvents(events.map(e => e.id === eventId ? updated : e));
+              if (activeEvent?.id === eventId) setActiveEvent(updated);
+              // Also refresh users list to include the potentially new photographer
+              const usersRes = await fetch(`${API_URL}/users`);
+              if (usersRes.ok) {
+                  const rawUsers = await usersRes.json();
+                  setUsers(Array.isArray(rawUsers) ? rawUsers.map(normalizeData) : []);
+              }
+          }
+      } catch (e) { console.error(e); alert("Failed to add team member"); }
+  };
+
+  const removeTeamMember = async (eventId: string, userId: string) => {
+      try {
+          const res = await fetch(`${API_URL}/events/${eventId}/team/${userId}`, { method: 'DELETE' });
+          if (res.ok) {
+              const updated = normalizeData(await res.json());
+              setEvents(events.map(e => e.id === eventId ? updated : e));
+              if (activeEvent?.id === eventId) setActiveEvent(updated);
+          }
+      } catch (e) { console.error(e); alert("Failed to remove team member"); }
+  };
+
+  const getEventRole = (event: Event | null): 'OWNER' | 'CO_ADMIN' | 'MEMBER' | 'NONE' => {
+      if (!event || !currentUser) return 'NONE';
+      if (event.photographerId === currentUser.id) return 'OWNER';
+      
+      const teamMember = event.team?.find(m => m.userId === currentUser.id);
+      if (teamMember) return teamMember.role;
+      
+      return 'NONE';
+  };
+
   return (
     <DataContext.Provider value={{
       currentUser, users, events, activeEvent, photos, selectedPhotos, isLoading, setActiveEvent,
@@ -543,7 +588,8 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       deletePhoto, deleteMultiplePhotos, togglePhotoSelection, selectMultiplePhotos, submitSelections, renamePersonInEvent,
       uploadAsset, uploadRawPhotos, uploadBulkEditedPhotos, resetDatabase,
       requestAddon, addPhotoComment, updatePhotoReviewStatus, approveAllEdits,
-      updateUserServices, updateUserPortfolio, toggleUserStatus, refreshPhotos, downloadPhoto, recordPayment
+      updateUserServices, updateUserPortfolio, toggleUserStatus, refreshPhotos, downloadPhoto, recordPayment,
+      addTeamMember, removeTeamMember, getEventRole
     }}>
       {children}
     </DataContext.Provider>

@@ -21,6 +21,7 @@ SelectionStatus = Literal['open', 'submitted', 'editing', 'review', 'accepted']
 PhotoReviewStatus = Literal['pending', 'approved', 'changes_requested']
 ServiceType = Literal['service', 'addon']
 AddonStatus = Literal['pending', 'approved', 'rejected']
+EventTeamRole = Literal['CO_ADMIN', 'MEMBER']
 
 # --- Sub Models ---
 
@@ -128,6 +129,10 @@ class PaymentRecord(BaseModel):
     method: str
     note: Optional[str] = None
 
+class EventTeamMember(BaseModel):
+    userId: str
+    role: EventTeamRole = 'MEMBER'
+
 # --- Entity Models ---
 
 class User(MongoBaseModel):
@@ -154,6 +159,7 @@ class Event(MongoBaseModel):
     coverImage: str
     photoCount: int = 0
     assignedUsers: List[str] = []
+    team: List[EventTeamMember] = [] # List of other photographers
     subEvents: List[SubEvent] = []
     status: EventStatus = 'active'
     selectionStatus: SelectionStatus = 'open'
@@ -242,3 +248,7 @@ class PaymentRequest(BaseModel):
     date: str
     method: str
     note: Optional[str] = None
+
+class AddTeamMemberRequest(BaseModel):
+    email: str
+    role: EventTeamRole

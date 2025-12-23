@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import List, Optional, Literal, Dict, Any
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, Body, BackgroundTasks, UploadFile, File, Form
+from fastapi import FastAPI, HTTPException, Body, BackgroundTasks, UploadFile, File, Form, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, BeforeValidator, ConfigDict, EmailStr
@@ -44,6 +44,7 @@ class MongoBaseModel(BaseModel):
 UserRole = Literal['ADMIN', 'PHOTOGRAPHER', 'USER']
 EventStatus = Literal['active', 'completed', 'closed']
 SelectionStatus = Literal['open', 'submitted', 'editing', 'review', 'accepted']
+EventTeamRole = Literal['CO_ADMIN', 'MEMBER']
 
 class Service(BaseModel):
     id: str
@@ -84,6 +85,10 @@ class EventTimeline(BaseModel):
     reviewStartedAt: Optional[datetime] = None
     finalizedAt: Optional[datetime] = None
 
+class EventTeamMember(BaseModel):
+    userId: str
+    role: EventTeamRole = 'MEMBER'
+
 class User(MongoBaseModel):
     email: EmailStr
     name: str
@@ -111,6 +116,7 @@ class Event(MongoBaseModel):
     coverImage: str
     photoCount: int = 0
     assignedUsers: List[str] = []
+    team: List[EventTeamMember] = [] 
     subEvents: List[SubEvent] = []
     status: EventStatus = 'active'
     selectionStatus: SelectionStatus = 'open'
@@ -170,6 +176,10 @@ class PaymentRequest(BaseModel):
     date: str
     method: str
     note: Optional[str] = None
+
+class AddTeamMemberRequest(BaseModel):
+    email: str
+    role: EventTeamRole
 
 # --- Lifecycle ---
 
@@ -361,6 +371,45 @@ async def create_event(event: Event):
 async def update_event(id: str, updates: dict = Body(...)):
     if '_id' in updates: del updates['_id']
     await db.events.update_one({"_id": ObjectId(id)}, {"$set": updates})
+    return await db.events.find_one({"_id": ObjectId(id)})
+
+@app.post("/api/events/{id}/team", response_model=Event)
+async def add_team_member(id: str, req: AddTeamMemberRequest):
+    # 1. Check if user exists or create
+    user = await db.users.find_one({"email": req.email})
+    if not user:
+        user_name = req.email.split('@')[0]
+        new_user = User(
+            email=req.email,
+            name=user_name,
+            role='PHOTOGRAPHER',
+            avatar=f"https://ui-avatars.com/api/?name={user_name}&background=random"
+        )
+        res = await db.users.insert_one(new_user.model_dump(by_alias=True, exclude=["id"]))
+        user = await db.users.find_one({"_id": res.inserted_id})
+    
+    user_id = str(user["_id"])
+    
+    # 2. Update Event Team
+    # Check if already in team
+    event = await db.events.find_one({"_id": ObjectId(id)})
+    team = event.get('team', [])
+    
+    if not any(m['userId'] == user_id for m in team):
+        new_member = {"userId": user_id, "role": req.role}
+        await db.events.update_one(
+            {"_id": ObjectId(id)},
+            {"$push": {"team": new_member}}
+        )
+    
+    return await db.events.find_one({"_id": ObjectId(id)})
+
+@app.delete("/api/events/{id}/team/{user_id}", response_model=Event)
+async def remove_team_member(id: str, user_id: str):
+    await db.events.update_one(
+        {"_id": ObjectId(id)},
+        {"$pull": {"team": {"userId": user_id}}}
+    )
     return await db.events.find_one({"_id": ObjectId(id)})
 
 @app.post("/api/events/{id}/submit-selections")

@@ -2,7 +2,8 @@
 import React from 'react';
 import { 
   Camera, Zap, Users, CreditCard, CheckCircle, ArrowRight, 
-  Clock, Shield, Star, ChevronRight, LayoutDashboard, BrainCircuit
+  Clock, Shield, Star, ChevronRight, LayoutDashboard, BrainCircuit,
+  ScanFace, Filter, PartyPopper, Sparkles, ImageMinus
 } from 'lucide-react';
 
 interface LandingPageProps {
@@ -122,46 +123,67 @@ const LandingPage: React.FC<LandingPageProps> = ({ onGetStarted }) => {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
                 {[
                     {
-                        icon: BrainCircuit,
+                        icon: ScanFace,
                         color: 'text-indigo-600',
                         bg: 'bg-indigo-50',
-                        title: 'AI Face Sorting',
-                        desc: 'Upload 5,000 wedding photos and let our AI group them by face. Clients can find their own photos in seconds.'
+                        title: 'Precision Face Recognition',
+                        desc: 'Our engine detects and clusters faces with 99% accuracy. Clients can find every photo of themselves instantly.'
+                    },
+                    {
+                        icon: Sparkles,
+                        color: 'text-amber-500',
+                        bg: 'bg-amber-50',
+                        title: 'AI Best Picks',
+                        desc: 'Aesthetic scoring automatically highlights the best shots based on composition, lighting, and expressions.'
+                    },
+                    {
+                        icon: Filter,
+                        color: 'text-rose-600',
+                        bg: 'bg-rose-50',
+                        title: 'Smart Culling',
+                        desc: 'Auto-filter blurry, out-of-focus, and blinking shots. Group duplicates to keep your gallery clean.'
+                    },
+                    {
+                        icon: Camera,
+                        color: 'text-emerald-600',
+                        bg: 'bg-emerald-50',
+                        title: 'Moment Detection',
+                        desc: 'Context-aware AI identifies key rituals like Varmala, Pheras, or Ring Exchange automatically.'
+                    },
+                    {
+                        icon: PartyPopper,
+                        color: 'text-purple-600',
+                        bg: 'bg-purple-50',
+                        title: 'Activity Sorting',
+                        desc: 'Photos are categorized by activity: Dancing, Dining, Speeches, or Getting Ready for easy navigation.'
                     },
                     {
                         icon: CheckCircle,
-                        color: 'text-emerald-600',
-                        bg: 'bg-emerald-50',
-                        title: 'Selection Workflow',
+                        color: 'text-blue-600',
+                        bg: 'bg-blue-50',
+                        title: 'Zero-Friction Selection',
                         desc: 'Clients select favorites on mobile. You get a locked list ready for editing. No more Excel sheets.'
                     },
                     {
                         icon: CreditCard,
-                        color: 'text-amber-600',
-                        bg: 'bg-amber-50',
+                        color: 'text-slate-600',
+                        bg: 'bg-slate-100',
                         title: 'Integrated Payments',
-                        desc: 'Track contract values, record payments, and gate high-res downloads until the balance is paid.'
+                        desc: 'Track contract values, record payments, and gate downloads until the balance is cleared.'
                     },
                     {
                         icon: Shield,
-                        color: 'text-slate-600',
-                        bg: 'bg-slate-100',
+                        color: 'text-teal-600',
+                        bg: 'bg-teal-50',
                         title: 'Secure Delivery',
-                        desc: 'Watermark raw uploads automatically. Generate expiring links for high-res downloads.'
-                    },
-                    {
-                        icon: LayoutDashboard,
-                        color: 'text-purple-600',
-                        bg: 'bg-purple-50',
-                        title: 'Studio Dashboard',
-                        desc: 'See all active events, pending selections, and financial health at a glance.'
+                        desc: 'Watermark raw uploads automatically. Generate secure, expiring links for high-res downloads.'
                     },
                     {
                         icon: Zap,
-                        color: 'text-rose-600',
-                        bg: 'bg-rose-50',
-                        title: 'Instant Add-ons',
-                        desc: 'Upsell albums, prints, and extra edits directly within the client gallery experience.'
+                        color: 'text-orange-600',
+                        bg: 'bg-orange-50',
+                        title: 'Instant Upsells',
+                        desc: 'Sell albums, prints, and extra edits directly within the client gallery experience.'
                     }
                 ].map((feature, i) => (
                     <div key={i} className="bg-white p-8 rounded-[2rem] border border-slate-100 shadow-sm hover:shadow-xl transition-all group">
