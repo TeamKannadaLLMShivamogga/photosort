@@ -27,7 +27,11 @@ AI_SERVICE_URL = os.getenv("AI_SERVICE_URL", "http://localhost:8011")
 UPLOAD_DIR = "uploads"
 
 # CRITICAL FIX: Ensure directory exists BEFORE app.mount is called
-os.makedirs(UPLOAD_DIR, exist_ok=True)
+try:
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
+    print(f"Created/Verified upload directory at: {os.path.abspath(UPLOAD_DIR)}")
+except Exception as e:
+    print(f"Error creating upload directory: {e}")
 
 client = AsyncIOMotorClient(MONGO_URL)
 db = client[DB_NAME]
@@ -189,6 +193,9 @@ class AddTeamMemberRequest(BaseModel):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Ensure upload directory (Redundant check but good for safety)
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
+    
     # Simple Seed check
     if await db.users.count_documents({}) == 0:
         await seed_database()
