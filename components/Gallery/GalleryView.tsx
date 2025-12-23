@@ -2,7 +2,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { 
   Grid2X2, Sparkles, User, Calendar, Tag, Check, Filter, 
-  X, ChevronRight, Star, CheckCircle2, Image as ImageIcon, RotateCcw, Trash2, Edit2, UploadCloud, Lock, Unlock, AlertCircle, Download, Clock, Send, List, LayoutList
+  X, ChevronRight, Star, CheckCircle2, Image as ImageIcon, RotateCcw, Trash2, Edit2, UploadCloud, Lock, Unlock, AlertCircle, Download, Clock, Send, List, LayoutList, Users, CheckSquare
 } from 'lucide-react';
 import { useData } from '../../context/DataContext';
 import { Photo, SelectionStatus } from '../../types';
@@ -26,6 +26,10 @@ const GalleryView: React.FC<GalleryViewProps> = ({ initialTab, isPhotographer, o
   const [subTab, setSubTab] = useState<SubTabType>('grid');
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
 
+  // Photographer Management Mode
+  const [isManaging, setIsManaging] = useState(false);
+  const [adminSelected, setAdminSelected] = useState<Set<string>>(new Set());
+
   const [selectedFilters, setSelectedFilters] = useState<{
     people: string[];
     events: string[];
@@ -36,6 +40,7 @@ const GalleryView: React.FC<GalleryViewProps> = ({ initialTab, isPhotographer, o
     tags: []
   });
   const [editPersonName, setEditPersonName] = useState<{old: string, new: string} | null>(null);
+  const [isPeopleModalOpen, setIsPeopleModalOpen] = useState(false);
   
   // Status Update Modal State
   const [isStatusModalOpen, setIsStatusModalOpen] = useState(false);
@@ -73,22 +78,28 @@ const GalleryView: React.FC<GalleryViewProps> = ({ initialTab, isPhotographer, o
     [photos, activeEvent]
   );
 
-  const subEventCounts = useMemo(() => {
-    const counts: Record<string, number> = {};
-    activeEvent?.subEvents.forEach(se => {
-        counts[se.name] = eventPhotos.filter(p =>
-            (p.subEventId && p.subEventId === se.id) ||
-            (!p.subEventId && p.category === se.name)
-        ).length;
-    });
-    return counts;
-  }, [eventPhotos, activeEvent]);
+  // Calculate Person Counts for Sorting
+  const peopleCounts = useMemo(() => {
+      const counts: Record<string, number> = {};
+      eventPhotos.forEach(p => {
+          p.people.forEach(person => {
+              counts[person] = (counts[person] || 0) + 1;
+          });
+      });
+      return counts;
+  }, [eventPhotos]);
 
-  const filterOptions = useMemo(() => ({
-    people: Array.from(new Set(eventPhotos.flatMap(p => p.people))),
-    events: activeEvent?.subEvents.map(s => s.name) || [],
-    tags: Array.from(new Set(eventPhotos.map(p => p.category)))
-  }), [eventPhotos, activeEvent]);
+  const filterOptions = useMemo(() => {
+    // Sort people by frequency (high to low)
+    const uniquePeople = Array.from(new Set(eventPhotos.flatMap(p => p.people)));
+    const sortedPeople = uniquePeople.sort((a, b) => (peopleCounts[b] || 0) - (peopleCounts[a] || 0));
+
+    return {
+        people: sortedPeople,
+        events: activeEvent?.subEvents.map(s => s.name) || [],
+        tags: Array.from(new Set(eventPhotos.map(p => p.category)))
+    };
+  }, [eventPhotos, activeEvent, peopleCounts]);
 
   const peopleThumbnails = useMemo(() => {
     const map: Record<string, string> = {};
@@ -161,6 +172,26 @@ const GalleryView: React.FC<GalleryViewProps> = ({ initialTab, isPhotographer, o
       document.body.removeChild(link);
   };
 
+  // --- Management Logic ---
+  const toggleAdminSelection = (id: string) => {
+      const newSet = new Set(adminSelected);
+      if (newSet.has(id)) newSet.delete(id);
+      else newSet.add(id);
+      setAdminSelected(newSet);
+  };
+
+  const handleBulkDelete = async () => {
+      if (adminSelected.size === 0) return;
+      if (confirm(`Are you sure you want to permanently delete ${adminSelected.size} photos?`)) {
+          // Execute sequentially to avoid overwhelming server or create bulk endpoint
+          for (const id of adminSelected) {
+              await deletePhoto(id);
+          }
+          setAdminSelected(new Set());
+          setIsManaging(false);
+      }
+  };
+
   const isLocked = activeEvent?.selectionStatus !== 'open' && !isPhotographer;
 
   return (
@@ -174,7 +205,7 @@ const GalleryView: React.FC<GalleryViewProps> = ({ initialTab, isPhotographer, o
                         {(['all', 'selected', 'edited'] as MainTabType[]).map(tab => (
                             <button
                                 key={tab}
-                                onClick={() => setMainTab(tab)}
+                                onClick={() => { setMainTab(tab); setIsManaging(false); }}
                                 className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${
                                     mainTab === tab ? 'bg-white shadow-sm text-slate-900' : 'text-slate-400 hover:text-slate-600'
                                 }`}
@@ -202,13 +233,15 @@ const GalleryView: React.FC<GalleryViewProps> = ({ initialTab, isPhotographer, o
                         onClick={() => setViewMode('grid')}
                         className={`p-2 rounded-lg transition-all ${viewMode === 'grid' ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-400'}`}
                         title="Grid View"
+                        disabled={isManaging}
                     >
                         <Grid2X2 className="w-4 h-4" />
                     </button>
                     <button 
                         onClick={() => setViewMode('feed')}
-                        className={`p-2 rounded-lg transition-all ${viewMode === 'feed' ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-400'}`}
-                        title="Linear Feed (Chronological)"
+                        className={`p-2 rounded-lg transition-all ${viewMode === 'feed' ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-400'} ${isManaging ? 'opacity-50 cursor-not-allowed' : ''}`}
+                        title="Linear Feed"
+                        disabled={isManaging}
                     >
                         <LayoutList className="w-4 h-4" />
                     </button>
@@ -216,12 +249,38 @@ const GalleryView: React.FC<GalleryViewProps> = ({ initialTab, isPhotographer, o
 
                {isPhotographer ? (
                    <>
-                       <button onClick={onUploadClick} className="px-4 py-3 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-black flex items-center gap-2">
-                           <UploadCloud className="w-4 h-4" /> Upload Raw
-                       </button>
-                       <button onClick={onUploadEditsClick} className="px-4 py-3 bg-indigo-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-indigo-700 flex items-center gap-2">
-                           <Sparkles className="w-4 h-4" /> Upload Edits
-                       </button>
+                       {!isManaging ? (
+                           <>
+                               <button 
+                                    onClick={() => { setIsManaging(true); setViewMode('grid'); }}
+                                    className="px-4 py-3 bg-white text-slate-700 border border-slate-200 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-50 flex items-center gap-2"
+                               >
+                                   <CheckSquare className="w-4 h-4" /> Select
+                               </button>
+                               <button onClick={onUploadClick} className="px-4 py-3 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-black flex items-center gap-2">
+                                   <UploadCloud className="w-4 h-4" /> Upload Raw
+                               </button>
+                               <button onClick={onUploadEditsClick} className="px-4 py-3 bg-indigo-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-indigo-700 flex items-center gap-2">
+                                   <Sparkles className="w-4 h-4" /> Upload Edits
+                               </button>
+                           </>
+                       ) : (
+                           <>
+                                <button 
+                                    onClick={() => { setIsManaging(false); setAdminSelected(new Set()); }}
+                                    className="px-4 py-3 bg-white text-slate-500 border border-slate-200 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-50"
+                                >
+                                    Cancel
+                                </button>
+                                <button 
+                                    onClick={handleBulkDelete} 
+                                    disabled={adminSelected.size === 0}
+                                    className="px-6 py-3 bg-red-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-red-700 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-red-600/20"
+                                >
+                                    <Trash2 className="w-4 h-4" /> Delete ({adminSelected.size})
+                                </button>
+                           </>
+                       )}
                    </>
                ) : (
                    !isLocked && (
@@ -261,26 +320,38 @@ const GalleryView: React.FC<GalleryViewProps> = ({ initialTab, isPhotographer, o
 
                {/* Dynamic Filter Chips based on subTab */}
                <div className="flex-1 flex flex-wrap gap-2 items-center">
-                   {subTab === 'people' && filterOptions.people.map(person => (
-                       <button
-                           key={person}
-                           onClick={() => toggleFilter('people', person)}
-                           className={`flex items-center gap-2 pr-3 pl-1 py-1 rounded-full border transition-all ${
-                               selectedFilters.people.includes(person) 
-                               ? 'bg-indigo-50 border-indigo-200 text-indigo-700' 
-                               : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
-                           }`}
-                       >
-                           <img src={peopleThumbnails[person] || `https://ui-avatars.com/api/?name=${person}`} className="w-6 h-6 rounded-full object-cover" alt="" />
-                           <span className="text-[10px] font-bold uppercase tracking-wider">{person}</span>
-                           {isPhotographer && (
-                               <Edit2 
-                                onClick={(e) => { e.stopPropagation(); setEditPersonName({ old: person, new: person }); }} 
-                                className="w-3 h-3 opacity-50 hover:opacity-100" 
-                               />
+                   {subTab === 'people' && (
+                       <>
+                           {filterOptions.people.slice(0, 4).map(person => (
+                               <button
+                                   key={person}
+                                   onClick={() => toggleFilter('people', person)}
+                                   className={`flex items-center gap-2 pr-3 pl-1 py-1 rounded-full border transition-all ${
+                                       selectedFilters.people.includes(person) 
+                                       ? 'bg-indigo-50 border-indigo-200 text-indigo-700' 
+                                       : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
+                                   }`}
+                               >
+                                   <img src={peopleThumbnails[person] || `https://ui-avatars.com/api/?name=${person}`} className="w-6 h-6 rounded-full object-cover" alt="" />
+                                   <span className="text-[10px] font-bold uppercase tracking-wider">{person}</span>
+                                   {isPhotographer && (
+                                       <Edit2 
+                                        onClick={(e) => { e.stopPropagation(); setEditPersonName({ old: person, new: person }); }} 
+                                        className="w-3 h-3 opacity-50 hover:opacity-100" 
+                                       />
+                                   )}
+                               </button>
+                           ))}
+                           {filterOptions.people.length > 4 && (
+                               <button 
+                                onClick={() => setIsPeopleModalOpen(true)}
+                                className="px-3 py-1.5 rounded-full bg-slate-100 text-slate-600 text-[10px] font-black uppercase tracking-widest hover:bg-slate-200 transition-colors flex items-center gap-1"
+                               >
+                                   <Users className="w-3 h-3" /> View All ({filterOptions.people.length})
+                               </button>
                            )}
-                       </button>
-                   ))}
+                       </>
+                   )}
 
                    {subTab === 'events' && filterOptions.events.map(evt => (
                        <button
@@ -304,8 +375,18 @@ const GalleryView: React.FC<GalleryViewProps> = ({ initialTab, isPhotographer, o
            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 2xl:grid-cols-6 gap-4">
                {filteredPhotos.map(photo => {
                    const isSelected = selectedPhotos.has(photo.id);
+                   const isManagedSelected = adminSelected.has(photo.id);
+                   
                    return (
-                       <div key={photo.id} className={`group relative aspect-[4/5] bg-slate-100 rounded-2xl overflow-hidden transition-all ${isSelected ? 'ring-4 ring-indigo-500 shadow-xl scale-[0.98]' : 'hover:shadow-lg'}`}>
+                       <div 
+                            key={photo.id} 
+                            onClick={isManaging ? () => toggleAdminSelection(photo.id) : undefined}
+                            className={`group relative aspect-[4/5] bg-slate-100 rounded-2xl overflow-hidden transition-all 
+                                ${isManaging && isManagedSelected ? 'ring-4 ring-red-500 shadow-xl scale-[0.98]' : ''}
+                                ${!isManaging && isSelected ? 'ring-4 ring-indigo-500 shadow-xl scale-[0.98]' : ''}
+                                ${isManaging ? 'cursor-pointer hover:shadow-md' : 'hover:shadow-lg'}`
+                            }
+                       >
                            <img 
                                 src={mainTab === 'edited' ? (photo.editedUrl || photo.url) : photo.url} 
                                 loading="lazy" 
@@ -314,44 +395,59 @@ const GalleryView: React.FC<GalleryViewProps> = ({ initialTab, isPhotographer, o
                            />
                            
                            {/* Overlays */}
-                           <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-between p-3">
-                               <div className="flex justify-between items-start">
-                                   {photo.isAiPick && (
-                                       <div className="bg-[#10B981] text-white p-1.5 rounded-lg shadow-lg">
-                                           <Sparkles className="w-3 h-3" />
+                           {isManaging ? (
+                               // Manage Mode Overlay
+                               <div className={`absolute inset-0 transition-colors ${isManagedSelected ? 'bg-red-500/20' : 'bg-transparent'}`}>
+                                   {isManagedSelected && (
+                                       <div className="absolute top-2 right-2 bg-red-600 text-white p-1.5 rounded-full shadow-lg">
+                                           <Check className="w-4 h-4" />
                                        </div>
                                    )}
-                                   {isPhotographer && (
-                                       <button onClick={() => deletePhoto(photo.id)} className="bg-red-500 text-white p-1.5 rounded-lg hover:bg-red-600 transition-colors">
-                                           <Trash2 className="w-3 h-3" />
-                                       </button>
+                                   {!isManagedSelected && (
+                                       <div className="absolute top-2 right-2 w-7 h-7 rounded-full border-2 border-white/50 bg-black/10 backdrop-blur-sm group-hover:bg-black/30 transition-colors" />
                                    )}
                                </div>
-                               
-                               <div className="flex justify-between items-end">
-                                    <button 
-                                        onClick={(e) => handleDownload(e, mainTab === 'edited' ? (photo.editedUrl || photo.url) : photo.url)}
-                                        className="w-8 h-8 rounded-full bg-white/20 backdrop-blur flex items-center justify-center text-white hover:bg-white hover:text-slate-900 transition-all"
-                                        title="Download"
-                                    >
-                                        <Download className="w-4 h-4" />
-                                    </button>
+                           ) : (
+                               // Standard Mode Overlay
+                               <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-between p-3">
+                                   <div className="flex justify-between items-start">
+                                       {photo.isAiPick && (
+                                           <div className="bg-[#10B981] text-white p-1.5 rounded-lg shadow-lg">
+                                               <Sparkles className="w-3 h-3" />
+                                           </div>
+                                       )}
+                                       {isPhotographer && (
+                                           <button onClick={() => deletePhoto(photo.id)} className="bg-red-500 text-white p-1.5 rounded-lg hover:bg-red-600 transition-colors">
+                                               <Trash2 className="w-3 h-3" />
+                                           </button>
+                                       )}
+                                   </div>
+                                   
+                                   <div className="flex justify-between items-end">
+                                        <button 
+                                            onClick={(e) => handleDownload(e, mainTab === 'edited' ? (photo.editedUrl || photo.url) : photo.url)}
+                                            className="w-8 h-8 rounded-full bg-white/20 backdrop-blur flex items-center justify-center text-white hover:bg-white hover:text-slate-900 transition-all"
+                                            title="Download"
+                                        >
+                                            <Download className="w-4 h-4" />
+                                        </button>
 
-                                   {!isLocked && (
-                                       <button 
-                                            onClick={() => togglePhotoSelection(photo.id)}
-                                            className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${
-                                                isSelected ? 'bg-indigo-600 text-white' : 'bg-white/20 backdrop-blur text-white hover:bg-white hover:text-indigo-600'
-                                            }`}
-                                       >
-                                           <Check className="w-4 h-4" />
-                                       </button>
-                                   )}
+                                       {!isLocked && (
+                                           <button 
+                                                onClick={() => togglePhotoSelection(photo.id)}
+                                                className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${
+                                                    isSelected ? 'bg-indigo-600 text-white' : 'bg-white/20 backdrop-blur text-white hover:bg-white hover:text-indigo-600'
+                                                }`}
+                                           >
+                                               <Check className="w-4 h-4" />
+                                           </button>
+                                       )}
+                                   </div>
                                </div>
-                           </div>
+                           )}
 
-                           {/* Persistent Selection Indicator */}
-                           {isSelected && !isLocked && (
+                           {/* Persistent Selection Indicator (Standard Mode) */}
+                           {isSelected && !isLocked && !isManaging && (
                                <div className="absolute top-3 right-3 w-6 h-6 bg-indigo-600 rounded-full flex items-center justify-center border-2 border-white shadow-md z-10">
                                    <Check className="w-3 h-3 text-white" />
                                </div>
@@ -425,7 +521,7 @@ const GalleryView: React.FC<GalleryViewProps> = ({ initialTab, isPhotographer, o
 
        {/* Rename Modal */}
        {editPersonName && (
-           <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+           <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[70] flex items-center justify-center p-4">
                <div className="bg-white p-6 rounded-3xl w-full max-w-sm space-y-4 shadow-2xl">
                    <h3 className="font-bold text-slate-900">Rename Person</h3>
                    <input 
@@ -437,6 +533,67 @@ const GalleryView: React.FC<GalleryViewProps> = ({ initialTab, isPhotographer, o
                    <div className="flex gap-2">
                        <button onClick={() => setEditPersonName(null)} className="flex-1 py-3 text-slate-500 hover:bg-slate-50 rounded-xl font-bold">Cancel</button>
                        <button onClick={handleRenamePerson} className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-bold">Save</button>
+                   </div>
+               </div>
+           </div>
+       )}
+
+       {/* View All People Modal */}
+       {isPeopleModalOpen && (
+           <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
+               <div className="bg-white rounded-[2.5rem] w-full max-w-4xl max-h-[80vh] flex flex-col shadow-2xl overflow-hidden">
+                   <div className="p-6 border-b border-slate-100 flex items-center justify-between">
+                       <div>
+                           <h3 className="text-xl font-black text-slate-900 uppercase tracking-tight">Faces Found</h3>
+                           <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">
+                               {filterOptions.people.length} Unique People Identified
+                           </p>
+                       </div>
+                       <button onClick={() => setIsPeopleModalOpen(false)} className="p-2 hover:bg-slate-100 rounded-full text-slate-400">
+                           <X className="w-5 h-5" />
+                       </button>
+                   </div>
+                   
+                   <div className="p-6 overflow-y-auto no-scrollbar grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                       {filterOptions.people.map(person => {
+                           const count = peopleCounts[person] || 0;
+                           return (
+                               <div 
+                                key={person} 
+                                onClick={() => {
+                                    toggleFilter('people', person);
+                                    setIsPeopleModalOpen(false);
+                                }}
+                                className={`p-4 rounded-2xl border cursor-pointer transition-all hover:shadow-lg flex flex-col items-center gap-3 text-center group ${
+                                    selectedFilters.people.includes(person) 
+                                    ? 'bg-indigo-50 border-indigo-200' 
+                                    : 'bg-white border-slate-100 hover:border-indigo-100'
+                                }`}
+                               >
+                                   <div className="relative">
+                                       <img 
+                                        src={peopleThumbnails[person] || `https://ui-avatars.com/api/?name=${person}`} 
+                                        className="w-20 h-20 rounded-2xl object-cover shadow-sm" 
+                                        alt="" 
+                                       />
+                                       <span className="absolute -top-2 -right-2 bg-slate-900 text-white text-[9px] font-black w-6 h-6 flex items-center justify-center rounded-full shadow-md">
+                                           {count}
+                                       </span>
+                                   </div>
+                                   <div className="w-full">
+                                       <p className={`text-xs font-bold truncate ${selectedFilters.people.includes(person) ? 'text-indigo-700' : 'text-slate-700'}`}>{person}</p>
+                                       {isPhotographer && (
+                                           <button 
+                                            onClick={(e) => { e.stopPropagation(); setEditPersonName({ old: person, new: person }); }} 
+                                            className="mt-2 text-[9px] font-black uppercase tracking-widest text-slate-400 hover:text-indigo-600 bg-slate-50 px-3 py-1 rounded-lg w-full"
+                                           >
+                                               Rename
+                                           </button>
+                                       )}
+                                   </div>
+                               </div>
+                           );
+                       })}
                    </div>
                </div>
            </div>

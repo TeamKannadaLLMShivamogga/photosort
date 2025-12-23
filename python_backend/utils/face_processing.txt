@@ -13,7 +13,12 @@ from PIL import Image
 CHROMA_DB_DIR = "chroma_db"
 os.makedirs(CHROMA_DB_DIR, exist_ok=True)
 print(f"FaceService: ChromaDB path set to {os.path.abspath(CHROMA_DB_DIR)}")
-chroma_client = chromadb.PersistentClient(path=CHROMA_DB_DIR)
+
+# Initialize ChromaDB with telemetry disabled to prevent network spam/errors
+chroma_client = chromadb.PersistentClient(
+    path=CHROMA_DB_DIR, 
+    settings=Settings(anonymized_telemetry=False)
+)
 
 class FaceService:
     def __init__(self, upload_dir="uploads"):
@@ -110,9 +115,11 @@ class FaceService:
             person_name = None
             
             # Check distance threshold (Cosine distance)
+            # Lower is better match. 0.0 is exact.
             if results['ids'] and results['ids'][0] and results['distances'] and results['distances'][0]:
                 distance = results['distances'][0][0]
-                if distance < 0.4: # Match threshold
+                # Increased threshold from 0.4 to 0.6 to be more lenient and group faces better
+                if distance < 0.6: 
                     person_name = results['metadatas'][0][0]['name']
                     # print(f"DEBUG: Match found: {person_name} (dist: {distance:.4f})")
 
