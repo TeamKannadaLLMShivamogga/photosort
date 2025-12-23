@@ -6,7 +6,7 @@ Defines the schema for Users, Events, and Photos using Pydantic.
 
 from datetime import datetime
 from typing import List, Optional, Literal, Union, Any, Dict
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, EmailStr
 from .utils.mongo_helpers import MongoBaseModel, PyObjectId
 
 # --- Enums ---
@@ -121,10 +121,17 @@ class SubEvent(BaseModel):
     date: datetime
     endDate: Optional[datetime] = None
 
+class PaymentRecord(BaseModel):
+    id: str
+    date: datetime
+    amount: float
+    method: str
+    note: Optional[str] = None
+
 # --- Entity Models ---
 
 class User(MongoBaseModel):
-    email: str
+    email: EmailStr
     name: str
     phone: Optional[str] = None
     role: UserRole = 'USER'
@@ -154,6 +161,7 @@ class Event(MongoBaseModel):
     price: Optional[float] = 0.0
     paidAmount: Optional[float] = 0.0
     paymentStatus: PaymentStatus = 'pending'
+    paymentHistory: List[PaymentRecord] = []
     plan: EventPlan = 'BASIC'
     clientEmail: Optional[str] = None
     clientPhone: Optional[str] = None
@@ -162,6 +170,10 @@ class Event(MongoBaseModel):
     optimizationSetting: OptimizationType = 'balanced'
     selectedServices: List[Service] = []
     addonRequests: List[AddonRequest] = []
+    # Virtual field for creation
+    initialClients: Optional[List[Dict[str, str]]] = None
+    # Face Registry: Map "Person 1" -> "/uploads/faces/..."
+    faces: Dict[str, str] = {} 
 
 class Photo(MongoBaseModel):
     url: str
@@ -173,7 +185,7 @@ class Photo(MongoBaseModel):
     people: List[str] = []
     isAiPick: bool = False
     quality: PhotoQuality = 'medium'
-    category: Optional[str] = None
+    category: Optional[str] = "General"
     isSelected: bool = False
     reviewStatus: PhotoReviewStatus = 'pending'
     comments: List[Comment] = []
@@ -186,6 +198,12 @@ class Photo(MongoBaseModel):
 
 class LoginRequest(BaseModel):
     email: str
+
+class SignupRequest(BaseModel):
+    name: str
+    email: str
+    phone: str
+    role: UserRole = 'PHOTOGRAPHER'
 
 class PhotoUploadRequest(BaseModel):
     photos: List[Photo]
@@ -218,3 +236,9 @@ class AddonRequestInput(BaseModel):
 
 class AddonStatusUpdate(BaseModel):
     status: AddonStatus
+
+class PaymentRequest(BaseModel):
+    amount: float
+    date: str
+    method: str
+    note: Optional[str] = None

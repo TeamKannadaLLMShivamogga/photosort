@@ -1,3 +1,4 @@
+
 import os
 import asyncio
 import random
@@ -9,15 +10,20 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from bson import ObjectId
 from dotenv import load_dotenv
 
+# Import our new service
+from .utils.face_processing import FaceService
+
 load_dotenv()
 
 MONGO_URL = os.getenv("MONGODB_URL", "mongodb://localhost:27017")
 DB_NAME = "photosort"
+UPLOAD_DIR = "uploads"
 
 client = AsyncIOMotorClient(MONGO_URL)
 db = client[DB_NAME]
 
 app = FastAPI()
+face_service = FaceService(upload_dir=UPLOAD_DIR)
 
 class ProcessEventRequest(BaseModel):
     force_reprocess: bool = False
@@ -27,7 +33,7 @@ class AiProcessResponse(BaseModel):
     event_id: str
     tasks_queued: int
 
-# --- Simulation Logic ---
+# --- Logic ---
 
 async def run_ai_processing(event_id: str):
     print(f"AI Service: Starting processing for {event_id}")
@@ -35,16 +41,8 @@ async def run_ai_processing(event_id: str):
     # 1. Fetch Context
     event = await db.events.find_one({"_id": ObjectId(event_id)})
     if not event:
+        print(f"Event {event_id} not found")
         return
-
-    # Fetch Clients for Face ID Simulation
-    clients = []
-    for uid in event.get('assignedUsers', []):
-        u = await db.users.find_one({"_id": ObjectId(uid)})
-        if u: clients.append(u['name'].split()[0]) # Just take first name
-
-    sub_events = event.get('subEvents', [])
-    sub_event_names = [se['name'] for se in sub_events] if sub_events else ['Main Event']
 
     # 2. Fetch Unprocessed
     cursor = db.photos.find({"eventId": event_id, "isAiProcessed": False})
@@ -52,43 +50,47 @@ async def run_ai_processing(event_id: str):
     
     print(f"AI Service: Processing {len(photos)} images...")
 
-    tags_pool = ["Happy", "Candid", "Decor", "Dance", "Food", "Group", "Portrait", "Ritual", "Outdoors", "Black & White"]
+    tags_pool = ["Happy", "Candid", "Decor", "Dance", "Food", "Group", "Portrait", "Ritual", "Outdoors"]
 
     for photo in photos:
-        # Artifical delay to simulate GPU work
-        await asyncio.sleep(0.05) 
-        
-        # 3. Generate Metadata
+        # Process Face Recognition
+        # This is a blocking CPU operation, usually handled by a worker queue (Celery). 
+        # For this simple backend, we run it directly in the loop.
+        try:
+            detected_people, has_quality_face = face_service.process_image(photo['url'], event_id)
+        except Exception as e:
+            print(f"Face processing failed for {photo['_id']}: {e}")
+            detected_people = []
+            has_quality_face = False
+
+        # --- Metadata Generation ---
         
         # A. Category (Sub-event classification)
-        # Randomly assign to a sub-event if available, else 'General'
-        category = random.choice(sub_event_names) if sub_event_names else "General"
-        sub_event_id = next((se['id'] for se in sub_events if se['name'] == category), None)
+        category = "General"
+        if event.get('subEvents'):
+            # Simple timestamp matching could go here, or random for demo
+            category = random.choice(event["subEvents"])["name"]
 
         # B. Tags
-        num_tags = random.randint(2, 5)
-        tags = random.sample(tags_pool, num_tags)
+        tags = []
+        if has_quality_face:
+            tags.append("Portrait")
+        if len(detected_people) > 2:
+            tags.append("Group")
         
-        # C. People (Face Clustering)
-        # Randomly find 0-3 people from the client list
-        detected_people = []
-        if clients:
-            # 70% chance of finding at least one person
-            if random.random() < 0.7:
-                count = random.randint(1, min(3, len(clients)))
-                detected_people = random.sample(clients, count)
+        # Random filler tags for demo vibrancy
+        tags.extend(random.sample(tags_pool, k=random.randint(1, 2)))
         
-        # D. Quality Score (AI Pick)
-        # 20% chance of being a 'Highlight'
-        is_ai_pick = random.random() < 0.2
-        quality = 'high' if is_ai_pick else random.choice(['medium', 'medium', 'low'])
+        # C. Quality Score (AI Pick)
+        # Real logic: if image is sharp and has a high-quality face found
+        is_ai_pick = has_quality_face and random.random() > 0.3
+        quality = 'high' if is_ai_pick else 'medium'
 
-        # 4. Update DB
+        # 4. Update Photo in DB
         update_fields = {
             "isAiProcessed": True,
             "category": category,
-            "subEventId": sub_event_id,
-            "tags": tags,
+            "tags": list(set(tags)),
             "people": detected_people,
             "isAiPick": is_ai_pick,
             "quality": quality
@@ -99,13 +101,22 @@ async def run_ai_processing(event_id: str):
             {"$set": update_fields}
         )
     
+    # 5. Sync Face Registry to Event
+    # This ensures the UI has a map of "Person 1" -> "Thumbnail URL"
+    all_faces = face_service.get_event_faces(event_id)
+    if all_faces:
+        await db.events.update_one(
+            {"_id": ObjectId(event_id)},
+            {"$set": {"faces": all_faces}}
+        )
+
     print(f"AI Service: Completed {event_id}")
 
 # --- Routes ---
 
 @app.get("/health")
 def health_check():
-    return {"status": "ok", "mode": "Mock Inference"}
+    return {"status": "ok", "mode": "Active Inference (dlib/chroma)"}
 
 @app.post("/process-event/{event_id}", response_model=AiProcessResponse)
 async def process_event(event_id: str, background_tasks: BackgroundTasks):

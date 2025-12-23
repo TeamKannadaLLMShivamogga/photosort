@@ -1,3 +1,4 @@
+
 #!/bin/bash
 
 # ==========================================
@@ -49,6 +50,7 @@ rename_if_exists "python_backend/master_main.txt" "python_backend/main.py"
 rename_if_exists "python_backend/models.txt" "python_backend/models.py"
 rename_if_exists "python_backend/utils/mongo_helpers.txt" "python_backend/utils/mongo_helpers.py"
 rename_if_exists "python_backend/utils/seeding.txt" "python_backend/utils/seeding.py"
+rename_if_exists "python_backend/utils/face_processing.txt" "python_backend/utils/face_processing.py"
 rename_if_exists "python_backend/gen_ai_main.txt" "python_backend/gen_ai_main.py"
 
 # 2. CONDA ENVIRONMENT SETUP
