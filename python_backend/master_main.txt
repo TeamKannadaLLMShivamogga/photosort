@@ -1,3 +1,4 @@
+
 import os
 import shutil
 import time
@@ -68,6 +69,13 @@ class SubEvent(BaseModel):
     date: datetime
     location: Optional[str] = None
 
+class PaymentRecord(BaseModel):
+    id: str
+    date: datetime
+    amount: float
+    method: str
+    note: Optional[str] = None
+
 class EventTimeline(BaseModel):
     selectionDeadline: Optional[datetime] = None
     deliveryEstimate: Optional[datetime] = None
@@ -110,6 +118,7 @@ class Event(MongoBaseModel):
     price: float = 0.0
     paidAmount: float = 0.0
     paymentStatus: str = 'pending'
+    paymentHistory: List[PaymentRecord] = []
     plan: str = 'BASIC'
     clientEmail: Optional[str] = None
     clientPhone: Optional[str] = None
@@ -155,6 +164,12 @@ class SignupRequest(BaseModel):
 
 class PhotoUploadRequest(BaseModel):
     photos: List[Photo]
+
+class PaymentRequest(BaseModel):
+    amount: float
+    date: str
+    method: str
+    note: Optional[str] = None
 
 # --- Lifecycle ---
 
@@ -359,6 +374,34 @@ async def submit_selections(id: str):
     )
     return {"message": "Submitted"}
 
+@app.post("/api/events/{id}/payment", response_model=Event)
+async def record_payment(id: str, payment: PaymentRequest):
+    event = await db.events.find_one({"_id": ObjectId(id)})
+    if not event: raise HTTPException(404, "Event not found")
+    
+    new_record = PaymentRecord(
+        id=f"pay-{int(time.time())}",
+        date=datetime.fromisoformat(payment.date.replace('Z', '+00:00')),
+        amount=payment.amount,
+        method=payment.method,
+        note=payment.note
+    )
+    
+    new_paid_amount = (event.get('paidAmount') or 0) + payment.amount
+    payment_status = 'paid' if new_paid_amount >= (event.get('price') or 0) else 'partial'
+    
+    await db.events.update_one(
+        {"_id": ObjectId(id)}, 
+        {
+            "$push": {"paymentHistory": new_record.model_dump()},
+            "$set": {
+                "paidAmount": new_paid_amount,
+                "paymentStatus": payment_status
+            }
+        }
+    )
+    return await db.events.find_one({"_id": ObjectId(id)})
+
 # --- Photos ---
 
 @app.get("/api/events/{id}/photos", response_model=List[Photo])
@@ -403,6 +446,12 @@ async def toggle_selection(id: str):
     
     new_val = not photo.get('isSelected', False)
     await db.photos.update_one({"_id": ObjectId(id)}, {"$set": {"isSelected": new_val}})
+    return await db.photos.find_one({"_id": ObjectId(id)})
+
+@app.put("/api/photos/{id}", response_model=Photo)
+async def update_photo(id: str, updates: dict = Body(...)):
+    if '_id' in updates: del updates['_id']
+    await db.photos.update_one({"_id": ObjectId(id)}, {"$set": updates})
     return await db.photos.find_one({"_id": ObjectId(id)})
 
 @app.delete("/api/photos/{id}")

@@ -1,178 +1,152 @@
 
-# Client User Stories & Functional Specifications
-**Actor:** The Client (End User / Bride & Groom)
-**Role:** Select photos, review edits, manage family data, and download assets.
+# Client User Stories & UI Specifications
+**Actor:** Client (End User / Bride & Groom)
+**Role:** Browse photos, select favorites, review edits, and download.
 
 ---
 
-## 1. Onboarding & Landing
+## 1. Page: Event Selector (Landing)
+**Goal:** Choose which event to view (if multiple assigned).
 
-### US-1.1: Secure Authentication
-**As a** Client,
-**I want** to access the platform via a magic link or email login without creating a password,
-**So that** my entry barrier is low and secure.
-*   **Visual Detail:** A split-screen login page. Left side: High-quality hero image of a wedding. Right side: Clean form with "Email Address" input and "Access Event" button.
-*   **System Behavior:** Validates email against the `assignedUsers` list in the database. If new, auto-creates a user profile.
-
-### US-1.2: Event Portfolio (Landing Page)
-**As a** Client assigned to multiple events (e.g., my Wedding and my Sister's Wedding),
-**I want** to see a grid of all events I have access to immediately after logging in,
-**So that** I can choose which project to work on.
-*   **Visual Detail (EventSelector.tsx):** A grid of cards. Each card features the event cover image, event name, date, and a "View Project" button.
-*   **Visual Detail:** Large "Welcome, [Name]" header with a search bar to filter events by name.
+### UI Components & Layout
+*   **Hero:** "Welcome, [User Name]" with Camera icon.
+*   **Search:** Centered Search input "Search events...".
+*   **Event Cards Grid:**
+    *   **Visual:** Large cover image (16:10 aspect), gradient overlay.
+    *   **Details:** Event Name, Date (formatted: Month Year), Photo Count.
+    *   **Interaction:** Whole card is clickable -> Navigates to **User Dashboard**.
+*   **Empty State:**
+    *   Condition: `assignedUsers` list in DB does not contain current user ID.
+    *   UI: "No events found" message + "Refresh Data" button.
 
 ---
 
-## 2. Dashboard & Project Overview
+## 2. Page: User Dashboard
+**Goal:** Project status and high-level stats.
 
-### US-2.1: Project Pulse Dashboard
-**As a** Client,
-**I want** a central dashboard showing the real-time status of my event,
-**So that** I know exactly what actions are pending from my side.
-*   **Visual Detail (UserDashboard.tsx):** 
-    *   **Header:** Event Name, Date, and a status pill (e.g., "Selection Open" in Blue, "Editing" in Purple).
-    *   **KPI Cards:** Four large cards showing "Total Photos", "Selected Count", "Deadline", and "Payment Balance".
-    *   **Coverage Breakdown:** A list showing photo counts per sub-event (e.g., "Haldi: 400", "Wedding: 1200").
-
-### US-2.2: Financial Overview (Future Scope)
-**As a** Client,
-**I want** to see my total package price, amount paid, and remaining balance,
-**So that** I can ensure my photographer is paid on time.
-*   **Visual Detail:** A progress bar showing % paid.
-*   **Interaction:** A "Pay Now" button (Future) that opens a Stripe/Razorpay modal for the remaining balance.
-
----
-
-## 3. Smart Gallery Experience
-
-### US-3.1: "View All" Chronological Mode (Feature Request)
-**As a** Client,
-**I want** a "View All" toggle that displays every photo in a continuous, non-paginated feed sorted by time,
-**So that** I can relive the event chronologically without clicking through tabs.
-*   **Visual Detail:** A toggle switch "Grouped / Linear". In Linear mode, photos load via infinite scroll.
-
-### US-3.2: AI "Best Picks" Curation
-**As a** Client,
-**I want** to see a dedicated tab for "AI Best Picks",
-**So that** I can see the top 10-20% of photos scored highest for focus, lighting, and smiles.
-*   **Visual Detail:** Photos in this view have a gold/green `Sparkles` badge in the corner.
-
-### US-3.3: Face-Recognition Filtering
-**As a** Client,
-**I want** to filter the gallery by clicking on a family member's face,
-**So that** I can instantly find every photo of my parents or partner.
-*   **Visual Detail:** A horizontal scrollable ribbon of circular face thumbnails at the top of the gallery.
-*   **Interaction:** Clicking "Mom" filters the grid to show only photos containing Mom.
-
-### US-3.4: Advanced Tag Filtering
-**As a** Client,
-**I want** to filter by specific tags (e.g., "Decor", "Candid", "Stage", "Black & White"),
-**So that** I can find specific types of shots for my social media.
-*   **Visual Detail:** Pill-shaped filter chips. Active chips turn Indigo; inactive are White with gray borders.
+### UI Components & Layout
+*   **Header:** 
+    *   Event Name (H1).
+    *   Status Pill (e.g., "Selection Open" - Blue, "Submitted" - Amber).
+    *   Date Pill (Gray).
+*   **Action Bar (Right):**
+    *   **"Switch Event"**: White button. returns to Selector.
+    *   **"Select Photos"**: Green CTA button with Arrow icon.
+        *   *Visibility:* Only visible if `SelectionStatus` == 'open'.
+        *   *Action:* Navigates to `Smart Gallery`.
+*   **KPI Cards (4):**
+    1.  **Total Photos:** Count of all event photos. Icon: Image.
+    2.  **Selected:** Count of photos where `isSelected == true`. Icon: CheckCircle.
+    3.  **Deadline:** Formatted Date string from `timeline.selectionDeadline`. Icon: Clock.
+    4.  **Balance:** Calculated (`price` - `paidAmount`). Icon: Wallet.
+*   **Coverage Breakdown:** 
+    *   List of sub-events (e.g., "Haldi", "Wedding").
+    *   Shows photo count per sub-event.
+*   **"Need Help?" Card:**
+    *   Visual: Dark gradient background.
+    *   Action: "Contact Studio" button (Simulated).
 
 ---
 
-## 4. Selection Workflow
+## 3. Page: Smart Gallery
+**Goal:** Browse and select photos efficiently.
 
-### US-4.1: Frictionless Selection
-**As a** Client,
-**I want** to select photos with a single tap/click,
-**So that** I can process thousands of images quickly.
-*   **Visual Detail:** 
-    *   **Unselected:** Photo has a faint overlay on hover.
-    *   **Selected:** Photo shrinks slightly (`scale-95`), gains a thick Indigo border, and a persistent solid Checkmark icon in the top-right.
-
-### US-4.2: Selection Counter & Limits
-**As a** Client,
-**I want** to see a floating counter of my selected photos (e.g., "Selected: 150 / 200"),
-**So that** I know if I'm within my package limits.
-*   **Visual Detail:** A sticky footer or header badge showing the count.
-
-### US-4.3: Submission & Locking
-**As a** Client,
-**I want** to submit my final selection to the photographer,
-**So that** editing can commence.
-*   **System Behavior:** Clicking "Submit" triggers a confirmation modal: "This will lock your selection. You cannot change it afterwards."
-*   **Post-Condition:** The Gallery becomes "Read-Only". Selection toggles are disabled. Status updates to `Submitted`.
-
----
-
-## 5. Review & Feedback Loop
-
-### US-5.1: Reviewing Edits
-**As a** Client,
-**I want** to view a separate "Edited" tab containing only the post-processed images,
-**So that** I can verify the color correction and retouching.
-*   **Visual Detail:** A toggle in the gallery header: "Originals" | "Final Edits".
-
-### US-5.2: Specific Comments
-**As a** Client,
-**I want** to click on an edited photo and leave a specific comment (e.g., "Remove the object in background"),
-**So that** the photographer knows exactly what to fix.
-*   **Visual Detail:** Clicking a photo opens a lightbox. A sidebar allows typing comments. 
-*   **Status:** Photo status changes to "Changes Requested" (Amber badge).
-
-### US-5.3: Final Approval
-**As a** Client,
-**I want** to mark photos as "Approved",
-**So that** the project can be closed and high-res assets released.
-*   **Interaction:** A "Approve All" button for bulk approval.
+### UI Components & Layout
+*   **Header:**
+    *   **Main Tabs:** 
+        1. **All** (Default)
+        2. **Selected** (Filter `isSelected=true`)
+        3. **Edited** (Filter `editedUrl` exists)
+    *   **Right Actions:** 
+        *   View Toggle (Grid/Feed).
+        *   **"Submit Selection"**: Green Button. Shows count (e.g., "Submit (150)"). Clicking opens confirmation dialog.
+*   **Filter Bar (Only on 'All' Tab):**
+    *   **Tabs:** Grid (Reset), AI Best Picks, People, Events, Tags.
+    *   **Dynamic Chips:**
+        *   *If People Tab:* Horizontal scroll of Face Avatars + Names. Click to toggle filter. Selected chips turn Indigo.
+        *   *If Events Tab:* Text buttons for sub-events.
+*   **Photo Grid (Grid View):**
+    *   **Layout:** Responsive columns (2 to 6 based on screen width).
+    *   **Photo Card:**
+        *   **AI Badge:** Green "Sparkles" icon in top-left if `isAiPick`.
+        *   **Selection State:**
+            *   *Unselected:* Hover shows transparent circle.
+            *   *Selected:* Top-right shows solid Blue circle with Checkmark. Border turns Blue. Image scales down slightly (98%).
+        *   **Download Button:** Bottom-left on hover.
+    *   **Interaction:** 
+        *   Clicking center -> Opens Lightbox.
+        *   Clicking Check/Circle -> Toggles Selection (Optimistic update).
+*   **Photo Feed (List View):**
+    *   **Layout:** Single column, large images.
+    *   **Details:** Shows Metadata (Tags, People names) below image.
+    *   **Actions:** Large "Select Photo" button below image.
 
 ---
 
-## 6. Asset Delivery & Download
+## 4. Page: My Selections
+**Goal:** Review picks and finalize the order.
 
-### US-6.1: High-Res Download (Feature Request)
-**As a** Client,
-**I want** to download my photos in full resolution,
-**So that** I can print them or share them.
-*   **Visual Detail:** 
-    *   **Single:** A download icon on the lightbox of an approved photo.
-    *   **Bulk:** A "Download All (ZIP)" button on the Dashboard, available *only* after the project status is "Accepted".
-*   **Security:** Links should be time-limited or signed to prevent unauthorized sharing.
+### UI Components & Layout
+*   **Timeline:** Visual progress bar (Open -> Submitted -> Editing -> Review -> Accepted).
+*   **Tabs:** "My Selections" | "Edited Pics".
 
-### US-6.2: Social Media Ready (Web Size)
-**As a** Client,
-**I want** a "Download Web Size" option,
-**So that** I can get a smaller file optimized for Instagram/WhatsApp without compression artifacts.
+### Tab A: My Selections (Review Mode)
+*   **Header:** Title + Description.
+*   **Action:** 
+    *   **"Submit for edit"**: Green Button (Top Right).
+    *   *Logic:* Sets status to `submitted`. Locks the gallery (removes select buttons).
+*   **Grid:** 
+    *   Shows only `isSelected` photos.
+    *   **Hover Action:** Red Trash icon to unselect (remove from list).
+*   **Empty State:** Large "CheckCircle" icon with text "Your selection is empty".
 
----
-
-## 7. Album Design Studio (Future Scope)
-
-### US-7.1: Album Preview
-**As a** Client,
-**I want** to view digital proofs of my wedding album pages (spreads) in the "Album" tab,
-**So that** I can approve the layout before printing.
-*   **Visual Detail (UserAlbum.tsx):** A flipbook-style viewer or a vertical list of spreads (Left Page + Right Page).
-
-### US-7.2: Album Comments
-**As a** Client,
-**I want** to leave comments on specific album spreads (e.g., "Swap this photo with photo #124"),
-**So that** the design is perfect.
-
----
-
-## 8. Store & Upselling
-
-### US-8.1: Add-on Marketplace
-**As a** Client,
-**I want** to view a catalog of extra services (Add-ons) offered by my photographer,
-**So that** I can purchase additional items like "Parent Albums" or "Reel Edits".
-*   **Visual Detail (UserAddons.tsx):** Grid of service cards with Title, Description, Price, and a "Request" button.
-*   **Status:** Shows "Pending Approval" after requesting.
+### Tab B: Edited Pics (Delivery Mode)
+*   **Header:** "Final Deliverables".
+*   **Global Actions:**
+    *   **"Download All (ZIP)"**: Black Button. (Available if status == `accepted`).
+    *   **"Approve All"**: Indigo Button. Marks all pending edits as `approved`.
+*   **Grid:** Shows photos with `editedUrl`.
+*   **Photo Card:**
+    *   **Status Badge:** Top-right (Green Check = Approved, Amber Alert = Changes Requested).
+    *   **Review Controls (Below Image):**
+        *   **"Approve"**: Button. Sets `reviewStatus` to 'approved'.
+        *   **"Comment"**: Button. Toggles input field.
+        *   **Comment Input:** Text field + Send button. Adds comment to DB and sets status to 'changes_requested'.
+    *   **Comment History:** Scrollable list of previous comments below the input.
 
 ---
 
-## 9. Personalization & Settings
+## 5. Page: Add-ons Store
+**Goal:** Purchase extra services.
 
-### US-9.1: Family Mapping
-**As a** Client,
-**I want** to upload reference selfies for my family members in the Settings tab,
-**So that** the AI can accurately identify them in the gallery.
-*   **Visual Detail:** A list of family members (Mom, Dad, Sibling). Each has an "Upload Photo" button.
+### UI Components & Layout
+*   **Hero:** "Upgrade Your Experience" banner.
+*   **Grid:** 2 Columns.
+*   **Product Card:**
+    *   **Info:** Title (e.g., "Premium Album"), Price (Green text), Description.
+    *   **Action Button:**
+        *   *Default:* "Request Add-on" (Black, Plus Icon).
+        *   *Pending:* "Request Pending" (Amber pill, Clock Icon).
+        *   *Approved:* "Request Approved" (Green pill, Check Icon).
+        *   *Rejected:* "Request Rejected" (Red pill, X Icon).
+    *   **Interaction:** Clicking "Request" triggers `requestAddon` API call and updates UI to Pending.
 
-### US-9.2: Profile Management
-**As a** Client,
-**I want** to update my display name and avatar,
-**So that** my profile looks personalized in the dashboard.
+---
+
+## 6. Page: Album Design (Draft)
+**Goal:** View album layout.
+
+### UI Components & Layout
+*   **Layout:** Spread view (2 pages side-by-side).
+*   **Visuals:** Skeuomorphic book effect (Shadow spine).
+*   **Content:**
+    *   Left Page: Image 1.
+    *   Right Page: Image 2.
+    *   (Logic: Groups AI Picks into pairs).
+*   **Controls:**
+    *   **Left/Right Arrows:** Absolute positioned circles on edges. Navigate spreads.
+    *   **Page Numbers:** Bottom corners.
+*   **Comments Sidebar:**
+    *   **Toggle:** "Comments" button in header.
+    *   **Content:** List of comments + Input field to add notes on the specific spread.
+*   **Empty State:** If no AI picks, shows "No highlights available yet".

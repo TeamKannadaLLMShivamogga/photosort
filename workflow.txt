@@ -1,0 +1,736 @@
+
+# PhotoSort Pro - Master Architectural Blueprint & Workflow Specification
+**Version:** 4.0 (The "Deep Core" Edition)
+**Date:** Current
+**Status:** Production Ready
+**Scope:** Full Stack (UX, Frontend State, Backend Logic, Database, AI Service, Infra)
+
+---
+
+# TABLE OF CONTENTS
+
+1.  **EXECUTIVE SUMMARY**
+    *   1.1 Product Vision & Core Philosophy
+    *   1.2 Target Audience & Personas
+    *   1.3 Key Value Propositions
+    *   1.4 Success Metrics (KPIs)
+
+2.  **SYSTEM IDENTITY & DESIGN SYSTEM**
+    *   2.1 Color Palette (Semantic & Primitive)
+    *   2.2 Typography Scale & Hierarchy
+    *   2.3 Component Physics & Spacing
+    *   2.4 Iconography & Imagery Standards
+    *   2.5 Interactive States (Hover, Active, Disabled, Loading)
+
+3.  **FRONTEND ARCHITECTURE (REACT)**
+    *   3.1 Directory Structure & File Organization
+    *   3.2 Global State Management (Context API)
+    *   3.3 Component Hierarchy & Prop Definitions
+    *   3.4 Routing Strategy & Access Control
+    *   3.5 Optimistic UI Patterns & Data Fetching
+
+4.  **BACKEND ARCHITECTURE (MICROSERVICES)**
+    *   4.1 Service Boundaries (Master vs. AI)
+    *   4.2 Middleware & Security Layers
+    *   4.3 Error Handling & Standardization
+    *   4.4 File Storage Strategy (Local vs. Cloud)
+
+5.  **DATA ARCHITECTURE (DATABASE)**
+    *   5.1 Entity Relationship Diagram (ERD)
+    *   5.2 Collection Schemas (User, Event, Photo)
+    *   5.3 Indexing Strategy for Performance
+    *   5.4 Aggregation Pipelines
+
+6.  **API SPECIFICATION (OPENAPI/SWAGGER)**
+    *   6.1 Authentication Endpoints
+    *   6.2 User Management Endpoints
+    *   6.3 Event Orchestration Endpoints
+    *   6.4 Photo Workflow Endpoints
+    *   6.5 AI Service Integration
+
+7.  **DETAILED USER FLOWS**
+    *   7.1 Authentication & Onboarding
+    *   7.2 The Photographer's Journey (Creation to Delivery)
+    *   7.3 The Client's Journey (Selection to Download)
+    *   7.4 The Super Admin's View (Governance)
+
+8.  **AI MICROSERVICE LOGIC**
+    *   8.1 Processing Pipeline
+    *   8.2 Vision Model Integration (Mock/Real)
+    *   8.3 Metadata Injection Strategy
+
+9.  **SECURITY & COMPLIANCE**
+    *   9.1 Data Privacy (GDPR/CCPA)
+    *   9.2 Role-Based Access Control (RBAC)
+    *   9.3 Rate Limiting & Abuse Prevention
+
+10. **INFRASTRUCTURE & DEPLOYMENT**
+    *   10.1 Environment Variables
+    *   10.2 CI/CD Pipeline
+    *   10.3 Backup & Recovery
+
+---
+
+# 1. EXECUTIVE SUMMARY
+
+## 1.1 Product Vision & Core Philosophy
+PhotoSort Pro is not just a gallery; it is a **Workflow Operating System** for high-volume event photography studios. It eliminates the friction of file delivery, selection, and payment collection.
+*   **Philosophy:** "Zero-Friction Handoff."
+*   **Mantra:** If a user has to ask "How do I download this?", the design has failed.
+
+## 1.2 Target Audience & Personas
+1.  **"Pixel Perfect Studios" (The Photographer)**
+    *   **Pain Point:** Chasing clients for selections via WhatsApp/Excel. Losing revenue due to unpaid balances.
+    *   **Goal:** Upload 5,000 photos, get 200 selections back in 48 hours, get paid instantly.
+2.  **"Rohan & Priya" (The Wedding Client)**
+    *   **Pain Point:** Overwhelmed by 5,000 raw files. Can't find photos of "Mom".
+    *   **Goal:** Filter by face, select favorites on a phone, download high-res files easily.
+3.  **"SaaS Admin" (The Platform Owner)**
+    *   **Pain Point:** Managing server costs, ensuring subscription compliance.
+    *   **Goal:** Monitor system health, track MRR (Monthly Recurring Revenue).
+
+## 1.3 Key Value Propositions
+*   **AI-First Organization:** "Find me photos of the Bride + Groom + Smile".
+*   **Unified Financials:** Contract value, paid amount, and balance tracking integrated into the gallery workflow.
+*   **Mobile-First Selection:** Tinder-like speed for selecting photos.
+
+## 1.4 Success Metrics (KPIs)
+*   **Selection Velocity:** Time from "Gallery Open" to "Selection Submitted". (Target: < 7 days).
+*   **Conversion:** % of Add-on requests (Albums/Prints) generated.
+*   **Retention:** % of Photographers renewing Pro subscriptions.
+
+---
+
+# 2. SYSTEM IDENTITY & DESIGN SYSTEM
+
+## 2.1 Color Palette
+The system uses `tailwindcss` utility classes. We enforce a strict semantic palette to ensure consistency.
+
+### Primary Brand (Emerald & Slate)
+*   **Primary CTA:** `#10B981` (Emerald-500)
+    *   *Usage:* "Submit", "Save", "Create Event", "Select Photo".
+    *   *Hover:* `#059669` (Emerald-600).
+    *   *Shadow:* `shadow-emerald-500/20`.
+*   **Secondary/Brand:** `#4F46E5` (Indigo-600)
+    *   *Usage:* Active States, "Upload Edits", "Approve All", Feature Highlights.
+    *   *Backgrounds:* `bg-indigo-50` for chips/badges.
+
+### Functional Colors
+*   **Success:** `#22C55E` (Green-500) -> "Paid", "Approved".
+*   **Warning:** `#F59E0B` (Amber-500) -> "Pending Balance", "Changes Requested".
+*   **Danger:** `#EF4444` (Red-500) -> "Delete", "Ban", "Remove Access".
+*   **Surface:** `#F8FAFC` (Slate-50) -> Global App Background.
+*   **Surface-2:** `#FFFFFF` (White) -> Cards, Modals.
+*   **Text-Primary:** `#0F172A` (Slate-900) -> Headings, Key Data.
+*   **Text-Secondary:** `#64748B` (Slate-500) -> Labels, Descriptions.
+*   **Text-Tertiary:** `#94A3B8` (Slate-400) -> Placeholders, Icons.
+
+## 2.2 Typography Scale
+Font Family: **Inter** (Google Fonts).
+
+*   **Display:** `text-3xl font-black uppercase tracking-tight` (Page Titles).
+*   **Heading:** `text-xl font-bold text-slate-900` (Card Headers).
+*   **Subheading:** `text-sm font-bold text-slate-700` (Section Dividers).
+*   **Body:** `text-sm font-medium text-slate-600` (General Content).
+*   **Label:** `text-[10px] font-black uppercase tracking-widest text-slate-400` (Form Labels, Metadata).
+*   **Number:** `text-2xl font-black text-slate-900` (KPIs).
+
+## 2.3 Component Physics & Spacing
+*   **Border Radius:**
+    *   `rounded-[2.5rem]` -> Main Dashboard Cards.
+    *   `rounded-2xl` -> Inputs, Buttons, Image Thumbnails.
+    *   `rounded-full` -> Pills, Status Badges, Icon Buttons.
+*   **Shadows:**
+    *   `shadow-sm` -> Default Card state.
+    *   `shadow-xl` -> Hover states, Modals, Floating Action Buttons (FAB).
+    *   `shadow-2xl` -> Dropdowns, Popovers.
+*   **Transitions:** `transition-all duration-300 ease-in-out`.
+
+## 2.4 Iconography
+Library: **Lucide React**.
+*   Stroke Width: `2px` (Default) or `2.5px` (Bold).
+*   Size: `w-4 h-4` (Buttons), `w-5 h-5` (Nav), `w-6 h-6` (KPIs).
+
+---
+
+# 3. FRONTEND ARCHITECTURE (REACT)
+
+## 3.1 Directory Structure
+```text
+/src
+  /components
+    /CreateEventModal.tsx   # Complex wizard for event generation
+    /EventSwitcher.tsx      # Dropdown to toggle active context
+    /Gallery
+      /GalleryView.tsx      # The massive photo grid with virtualization
+      /PhotoCard.tsx        # Atomic photo unit with selection logic
+    /Sidebar.tsx            # Responsive navigation
+  /context
+    /DataContext.tsx        # The "Brain" - holds global state
+  /utils
+    /api.ts                 # Fetch wrappers
+    /formatters.ts          # Currency, Date formatters
+  /views
+    /Admin                  # Super Admin Routes
+    /Photographer           # Studio Routes
+    /User                   # Client Routes
+  App.tsx                   # Main router & layout shell
+  types.ts                  # TypeScript interfaces
+```
+
+## 3.2 Global State Management (Context API)
+**Store:** `DataContext`
+**State Shape:**
+```typescript
+interface State {
+  currentUser: User | null;
+  activeEvent: Event | null; // The event currently being viewed
+  events: Event[];           // List of all accessible events
+  photos: Photo[];           // Photos for the ACTIVE event only (Performance optimization)
+  selectedPhotos: Set<string>; // Set of Photo IDs (O(1) lookup)
+  users: User[];             // Cache of known users (for Admin/Photographer)
+  isLoading: boolean;
+}
+```
+**Persistence Strategy:**
+*   `localStorage.getItem('photoSortUser')` -> Hydrates `currentUser`.
+*   `localStorage.getItem('photoSortActiveEventId')` -> Hydrates `activeEvent`.
+
+## 3.3 Component Hierarchy & Prop Definitions
+
+### `GalleryView.tsx`
+The most complex component.
+*   **Props:**
+    *   `initialTab`: 'all' | 'selected' | 'edited'
+    *   `isPhotographer`: boolean (Toggles edit controls)
+    *   `onUploadClick`: function
+*   **Internal State:**
+    *   `viewMode`: 'grid' | 'feed'
+    *   `filters`: { people: [], tags: [], events: [] }
+    *   `selectionMode`: boolean
+*   **Optimization:** Uses `useMemo` to filter `photos` array based on active filters to prevent re-renders of 5000+ items.
+
+### `CreateEventModal.tsx`
+A multi-step wizard.
+*   **Steps:**
+    1.  **Logistics:** Name, Date, Location.
+    2.  **Plan:** Basic/Standard/Pro.
+    3.  **Financials:** Quote, Coupon.
+*   **Validation:** Step 1 cannot proceed without `name` and `date`.
+
+## 3.4 Routing Strategy
+Implemented via conditional rendering in `App.tsx` based on `currentView` state.
+*   **Guard Logic:**
+    *   If `!currentUser` -> Render `Login`.
+    *   If `currentUser.role === 'ADMIN'` -> Render `AdminDashboard`.
+    *   If `currentUser.role === 'PHOTOGRAPHER'` -> Render `PhotographerDashboard`.
+    *   If `currentUser.role === 'USER'` -> Render `UserDashboard` (or `EventSelector`).
+
+---
+
+# 4. BACKEND ARCHITECTURE (MICROSERVICES)
+
+## 4.1 Service Boundaries
+
+### Master Service (Node.js/Express OR Python/FastAPI)
+*   **Port:** 8000
+*   **Responsibilities:**
+    *   Auth & Session Management.
+    *   CRUD on Users, Events, Photos.
+    *   File Upload handling (Multipart).
+    *   Serving static assets (`/uploads`).
+    *   Orchestrating workflow transitions.
+
+### AI Service (Python/FastAPI)
+*   **Port:** 8001
+*   **Responsibilities:**
+    *   Background Processing Queue.
+    *   Image Analysis (Tags, Quality Score).
+    *   Face Detection & Clustering.
+    *   **Architecture:** Fire-and-forget. Master calls trigger endpoint; AI service updates DB directly when done.
+
+## 4.2 Middleware & Security
+*   **CORS:** Allow `localhost:5173` (Dev) and Production Domains.
+*   **Body Parser:** Limit increased to `50mb` to handle bulk JSON metadata.
+*   **Static Files:** Served with cache headers.
+
+## 4.3 Error Handling
+*   **400 Bad Request:** Missing required fields.
+*   **401 Unauthorized:** Invalid login/token.
+*   **403 Forbidden:** User tries to access Event they aren't assigned to.
+*   **404 Not Found:** Resource doesn't exist.
+*   **500 Internal Server Error:** DB connection fail or unhandled exception.
+
+---
+
+# 5. DATA ARCHITECTURE (DATABASE)
+
+## 5.1 Entity Relationship Diagram
+*   **User** 1 : N **Event** (Photographer owns Events)
+*   **Event** N : M **User** (Events have multiple Assigned Clients)
+*   **Event** 1 : N **Photo** (Event contains Photos)
+*   **Event** 1 : N **SubEvent** (Embedded Document)
+
+## 5.2 Collection Schemas
+
+### `users` Collection
+```javascript
+{
+  _id: ObjectId,
+  email: String (Index, Unique),
+  name: String,
+  role: Enum['ADMIN', 'PHOTOGRAPHER', 'USER'],
+  avatar: String (URL),
+  isActive: Boolean,
+  subscriptionTier: Enum['FREE', 'PRO', 'STUDIO'],
+  subscriptionExpiry: Date,
+  familyMembers: [
+    { id: String, name: String, relation: String, referencePhoto: String }
+  ],
+  services: [
+    { id: String, name: String, price: Number, type: 'service'|'addon' }
+  ],
+  portfolio: { bio: String, videoLinks: [String], galleryImages: [String] }
+}
+```
+
+### `events` Collection
+```javascript
+{
+  _id: ObjectId,
+  photographerId: ObjectId (Ref: users),
+  name: String,
+  date: Date,
+  coverImage: String,
+  status: Enum['active', 'completed', 'closed'],
+  selectionStatus: Enum['open', 'submitted', 'editing', 'review', 'accepted'],
+  assignedUsers: [String], // Array of User IDs
+  subEvents: [
+    { id: String, name: String, date: Date, location: String }
+  ],
+  photoCount: Number,
+  price: Number,
+  paidAmount: Number,
+  paymentHistory: [
+    { date: Date, amount: Number, method: String, note: String }
+  ],
+  addonRequests: [
+    { serviceId: String, status: 'pending'|'approved'|'rejected' }
+  ]
+}
+```
+
+### `photos` Collection
+```javascript
+{
+  _id: ObjectId,
+  eventId: ObjectId (Ref: events) (Index),
+  url: String,
+  editedUrl: String (Nullable),
+  originalFilename: String,
+  category: String, // e.g., "Haldi"
+  tags: [String], // e.g., "Candid", "Decor"
+  people: [String], // e.g., "Rohan", "Priya"
+  isAiPick: Boolean,
+  quality: Enum['high', 'medium', 'low'],
+  isSelected: Boolean,
+  reviewStatus: Enum['pending', 'approved', 'changes_requested'],
+  comments: [
+    { author: String, text: String, date: Date, role: String }
+  ],
+  isAiProcessed: Boolean
+}
+```
+
+## 5.3 Indexing Strategy
+*   `users.email`: Unique index for fast login lookup.
+*   `events.photographerId`: For filtering dashboard list.
+*   `photos.eventId`: Critical for gallery loading performance.
+*   `events.assignedUsers`: For filtering Client Event Selector.
+
+---
+
+# 6. API SPECIFICATION (OPENAPI/SWAGGER)
+
+## 6.1 Authentication
+*   **POST** `/api/auth/login`
+    *   **Body:** `{ email: "user@example.com" }`
+    *   **Logic:** Upsert. If user exists, return. If not, create with default role 'USER'.
+    *   **Response:** `200 OK` + User Object.
+
+*   **POST** `/api/auth/signup`
+    *   **Body:** `{ name, email, phone }`
+    *   **Logic:** Create 'PHOTOGRAPHER' user.
+    *   **Response:** `201 Created` + User Object.
+
+## 6.2 User Management
+*   **GET** `/api/users`
+    *   **Access:** Admin only.
+    *   **Response:** `[{ id, name, email, role, isActive ... }]`
+
+*   **PUT** `/api/users/:id`
+    *   **Body:** Partial User Object (e.g., `{ portfolio: {...} }`).
+    *   **Response:** Updated User.
+
+*   **PATCH** `/api/users/:id/status`
+    *   **Body:** None (Toggle).
+    *   **Logic:** Flip `isActive` boolean.
+
+## 6.3 Event Orchestration
+*   **GET** `/api/events`
+    *   **Response:** List of all events (Backend filtering optional, currently frontend filters).
+
+*   **POST** `/api/events`
+    *   **Body:** `{ name, date, photographerId, price, initialClients: [...] }`
+    *   **Logic:** 
+        1. Create Event doc.
+        2. Iterate `initialClients`: Find by email OR Create User.
+        3. Add User IDs to `assignedUsers`.
+        4. Create default 'Main Event' sub-event.
+
+*   **PUT** `/api/events/:id`
+    *   **Body:** Partial Event.
+    *   **Use Cases:** Update status, record payment (via `paidAmount`), update timeline.
+
+*   **POST** `/api/events/:id/payment`
+    *   **Body:** `{ amount, date, method, note }`
+    *   **Logic:** Push to `paymentHistory`, increment `paidAmount`.
+
+*   **POST** `/api/events/:id/submit-selections`
+    *   **Logic:** Set `selectionStatus` to 'submitted'. Lock UI.
+
+## 6.4 Photo Workflow
+*   **GET** `/api/events/:id/photos`
+    *   **Response:** List of Photo objects.
+
+*   **POST** `/api/events/:id/photos` (Bulk Ingest)
+    *   **Body:** `{ photos: [{ url, originalFilename, ... }] }`
+    *   **Logic:** 
+        1. Bulk Insert into `photos` collection.
+        2. Update `events.photoCount`.
+        3. Trigger background AI job.
+
+*   **POST** `/api/photos/:id/selection`
+    *   **Logic:** Toggle `isSelected` boolean.
+
+*   **PUT** `/api/photos/:id`
+    *   **Body:** `{ reviewStatus: 'approved' }` or `{ editedUrl: '...' }`.
+
+## 6.5 AI Service Integration
+*   **POST** (AI Service) `/process-event/:eventId`
+    *   **Logic:** Find `photos` where `eventId == id` AND `isAiProcessed == false`. Process them.
+
+---
+
+# 7. DETAILED USER FLOWS
+
+## 7.1 Authentication & Onboarding
+**Actor:** New Photographer
+1.  Land on Login Page.
+2.  Click "Partner Signup".
+3.  Fill Form: "Dream Lens Studio", "contact@dreamlens.com", "+1234567890".
+4.  Click "Create Partner Account".
+5.  **System:** Creates User (Role: Photographer, Tier: Free).
+6.  **Redirect:** Photographer Dashboard.
+
+## 7.2 The Photographer's Journey (End-to-End)
+**Scenario:** Creating the "Kapoor Wedding" event.
+
+1.  **Dashboard:** Click "New Event" (Green FAB).
+2.  **Wizard Step 1 (Logistics):**
+    *   Name: "Kapoor Wedding".
+    *   Date: "2023-12-01".
+    *   Location: "Taj Palace".
+    *   Quote: 1,50,000.
+3.  **Wizard Step 2 (Clients):**
+    *   Add "Rohan", "rohan@gmail.com".
+    *   Add "Priya", "priya@gmail.com".
+    *   **System:** Creates accounts for Rohan & Priya if they don't exist.
+4.  **Wizard Step 3 (Plan):** Select "Pro Tier" (Enables AI).
+5.  **Submit:** Event created. Redirect to Dashboard.
+6.  **Ingestion:**
+    *   Open Event -> "Manage Photos".
+    *   Click "Upload Raw". Select 500 JPEGs.
+    *   **System:** Uploads files -> Triggers AI -> Updates `photoCount`.
+7.  **Notification:** Wait for Client Selection.
+8.  **Editing Phase:**
+    *   Receive "Selection Submitted" alert.
+    *   Filter Gallery by "Selected".
+    *   Edit 50 photos externally.
+    *   Click "Upload Edits". Upload files named `IMG_001-Edit.jpg`.
+    *   **System:** Matches `IMG_001-Edit` to `IMG_001`. Updates `editedUrl`. Sets status `Review`.
+
+## 7.3 The Client's Journey
+**Scenario:** Selecting photos for the Album.
+
+1.  **Access:** Receive WhatsApp with Magic Link (simulated via Copy Invite).
+2.  **Login:** Enter Email -> Auto-login.
+3.  **Event Selector:** See "Kapoor Wedding" card. Click it.
+4.  **Dashboard:** See "Selection Open" pill. Click "Select Photos".
+5.  **Gallery (Smart Search):**
+    *   Click "People" tab.
+    *   Click "Rohan" (Face Cluster).
+    *   See all photos of Rohan.
+    *   Select 20 best photos.
+6.  **Submission:**
+    *   Click floating "Submit Selection (20)" button.
+    *   Confirm "Lock Selection?".
+    *   **System:** Status -> Submitted. Gallery becomes Read-Only.
+7.  **Review:**
+    *   Log in later. Status is "Review".
+    *   Go to "My Selections" -> "Edited Pics".
+    *   See edited photos.
+    *   Comment on one: "Too dark".
+    *   Approve the rest.
+8.  **Download:**
+    *   Once all approved (or Photographer forces completion), click "Download All".
+    *   **System:** Triggers sequential download of high-res assets.
+
+## 7.4 The Super Admin's View
+**Scenario:** Preventing abuse and checking revenue.
+
+1.  **Global Dashboard:** See "Storage Used: 1.8TB / 2TB".
+2.  **User Governance:**
+    *   Search "Spam Studio".
+    *   Toggle Status switch to "OFF".
+    *   **System:** User `isActive = false`. Token invalidated on next refresh.
+3.  **Revenue Check:**
+    *   See "Platform Balance: ₹5,00,000".
+    *   Identify events with high `price` but `paidAmount = 0`.
+
+---
+
+# 8. AI MICROSERVICE LOGIC
+
+## 8.1 Processing Pipeline
+The AI service runs asynchronously to prevent blocking the UI.
+
+1.  **Trigger:** API request `/process-event/{id}`.
+2.  **Fetch:** Query MongoDB for photos in this event where `isAiProcessed: false`.
+3.  **Context:** Fetch `Event.subEvents` (to know context like "Haldi") and `User.familyMembers` (reference faces).
+4.  **Inference Loop:**
+    *   Load image.
+    *   **Model A (Quality):** Laplacian Variance for blur detection.
+    *   **Model B (Classification):** CLIP / ResNet for tags ("Decor", "Food").
+    *   **Model C (Face):** FaceNet / Dlib. Extract embeddings. Compare with Reference Photos.
+5.  **Write:** Bulk update MongoDB documents with new metadata.
+
+## 8.2 Mock Implementation (Current State)
+Since running real GPUs is heavy, the current `gen_ai_main.py` simulates this:
+*   **Tags:** Randomly picks from `['Wedding', 'Candid', 'Decor']`.
+*   **People:** Randomly assigns names from the Client List.
+*   **Quality:** Random `Math.random() > 0.8` for `isAiPick`.
+*   **Latency:** `sleep(0.1)` to simulate processing time.
+
+## 8.3 Metadata Injection Strategy
+The Frontend uses this metadata to build the "Smart Filters".
+*   **People Tab:** Constructed from unique values in `photos[].people`.
+*   **Events Tab:** Constructed from `photos[].category`.
+*   **Best Picks:** Filter `photos[].isAiPick === true`.
+
+---
+
+# 9. SECURITY & COMPLIANCE
+
+## 9.1 Data Privacy
+*   **Separation:** Events are strictly siloed. A user can ONLY see an event if their `_id` is in `event.assignedUsers` OR if they are the `photographerId`.
+*   **Admin Override:** Admins bypass all checks (God Mode).
+
+## 9.2 Role-Based Access Control (RBAC)
+| Action | Admin | Photographer | User |
+| :--- | :---: | :---: | :---: |
+| Create Event | ✅ | ✅ | ❌ |
+| Delete Event | ✅ | ✅ (Own) | ❌ |
+| Upload Photos | ✅ | ✅ (Own) | ❌ |
+| Select Photos | ✅ | ❌ (Read Only) | ✅ (Assigned) |
+| Ban User | ✅ | ❌ | ❌ |
+| View Financials| ✅ | ✅ (Own) | ❌ (Own Balance only) |
+
+## 9.3 Rate Limiting & Safety
+*   **Uploads:** Frontend restricts file types to images.
+*   **Loops:** Sequential download adds 500ms delay to prevent browser crashing.
+
+---
+
+# 10. INFRASTRUCTURE & DEPLOYMENT
+
+## 10.1 Environment Variables
+*   `API_URL`: Base URL for backend.
+*   `MONGODB_URL`: Connection string.
+*   `AI_SERVICE_URL`: Internal URL for python microservice.
+*   `UPLOAD_DIR`: Path to store local files.
+
+## 10.2 CI/CD Pipeline (Recommended)
+1.  **Commit:** Git push to `main`.
+2.  **Build:**
+    *   Frontend: `npm run build` -> `./dist`.
+    *   Backend: Docker build.
+3.  **Deploy:**
+    *   Frontend -> Vercel/Netlify.
+    *   Backend -> Railway/Render/AWS EC2.
+    *   DB -> MongoDB Atlas.
+
+## 10.3 Backup & Recovery
+*   **Database:** Daily mongodump to S3.
+*   **Images:** S3 Lifecycle policies (move to Glacier after 1 year).
+*   **Disaster Recovery:** `resetDatabase` endpoint in Admin panel (Manual override).
+
+---
+
+# 11. DETAILED API CONTRACT (REQUEST/RESPONSE EXAMPLES)
+
+## 11.1 POST /api/events (Create Event)
+**Request:**
+```json
+{
+  "name": "Sharma Wedding",
+  "date": "2023-12-25",
+  "photographerId": "651a...",
+  "price": 100000,
+  "initialClients": [
+    { "name": "Rahul", "email": "rahul@gmail.com", "phone": "9998887776" }
+  ]
+}
+```
+**Response (200 OK):**
+```json
+{
+  "id": "651b...",
+  "name": "Sharma Wedding",
+  "assignedUsers": ["651c..."], // Rahul's ID (Created or Found)
+  "subEvents": [
+    { "id": "se-123...", "name": "Main Event", "date": "2023-12-25" }
+  ],
+  "photoCount": 0
+}
+```
+
+## 11.2 POST /api/events/{id}/photos (Upload)
+**Request:** `FormData`
+*   `files`: [Binary Data]
+*   `files`: [Binary Data]
+
+**Response (200 OK):**
+```json
+[
+  {
+    "id": "651d...",
+    "url": "/uploads/evt_651b_timestamp_img1.jpg",
+    "isAiProcessed": false
+  },
+  ...
+]
+```
+
+## 11.3 POST /api/photos/{id}/selection (Toggle)
+**Request:** (Empty Body)
+**Response (200 OK):**
+```json
+{
+  "id": "651d...",
+  "isSelected": true
+}
+```
+
+## 11.4 POST /process-event/{id} (AI Trigger)
+**Request:** (Empty Body)
+**Response (200 OK):**
+```json
+{
+  "message": "AI Processing triggered in background",
+  "event_id": "651b...",
+  "tasks_queued": 150
+}
+```
+
+---
+
+# 12. COMPONENT SPECIFICATIONS (DEEP DIVE)
+
+## 12.1 Gallery Grid (`GalleryView.tsx`)
+*   **Virtualization:** Not implemented yet (future optimization for >2000 photos).
+*   **Image Optimization:** Uses `loading="lazy"` and `object-cover`.
+*   **Selection UX:**
+    *   Clicking the image opens the **Lightbox**.
+    *   Clicking the top-right circle triggers **Selection**.
+    *   **Optimistic UI:** The UI toggles the checkmark *instantly*, then sends the API request. If API fails, it reverts.
+
+## 12.2 Event Timeline (`UserSelections.tsx`)
+A visual finite state machine.
+*   **Props:** `status`: SelectionStatus.
+*   **States:**
+    1.  **Open:** White nodes, Green active node.
+    2.  **Submitted:** Open node turns Green. Submitted node active.
+    3.  **Editing:** Photographer control.
+    4.  **Review:** Edited photos available.
+    5.  **Accepted:** All complete.
+*   **Rendering:** Flexbox with relative positioning for the connecting line.
+
+## 12.3 Sidebar (`Sidebar.tsx`)
+*   **Responsive:**
+    *   Desktop: Fixed width (`w-64`), left-aligned.
+    *   Mobile: Drawer (`translate-x`), hamburger trigger.
+*   **Role-Aware:**
+    *   Checks `currentUser.role`.
+    *   Renders specific links (`/admin-dashboard` vs `/portfolio`).
+*   **Event Context:**
+    *   Contains `EventSwitcher` dropdown if user has multiple events.
+
+---
+
+# 13. ERROR CODES & HANDLING STRATEGY
+
+| Error Code | Context | UI Behavior |
+| :--- | :--- | :--- |
+| **401 Unauthorized** | Session Expired | Redirect to Login screen immediately. Clear LocalStorage. |
+| **403 Forbidden** | Event Access | Show "Access Denied" full-page error. |
+| **404 Not Found** | Photo/Event | Show "Resource missing" toast. Remove item from list if applicable. |
+| **500 Server Error** | AI Service | Show "Processing Delayed" warning but allow uploads to continue. |
+| **Network Error** | Offline | Show global "Offline Mode" banner. Disable write actions (Upload/Select). |
+
+---
+
+# 14. DATABASE OPTIMIZATION & INDEXING
+
+## 14.1 Query Patterns
+1.  **Get Event Photos:** `db.photos.find({ eventId: ... })`
+    *   *Optimization:* Compound index on `{ eventId: 1, isSelected: 1 }` for filtering.
+2.  **Login:** `db.users.findOne({ email: ... })`
+    *   *Optimization:* Unique index on `{ email: 1 }`.
+3.  **Admin Stats:** `db.events.aggregate([...])`
+    *   *Optimization:* Index on `{ price: 1, paidAmount: 1 }` for revenue sums.
+
+## 14.2 Schema Validation (Mongoose-like)
+Although using `Motor` (Python) or `Mongoose` (Node), we enforce:
+*   `email`: Regex validation for format.
+*   `price`: Non-negative number.
+*   `role`: Enum strict check.
+
+---
+
+# 15. EDGE CASES & LIMITATIONS
+
+## 15.1 "The 10,000 Photo Problem"
+*   **Issue:** Loading 10k DOM nodes kills the browser.
+*   **Solution (Current):** Pagination is NOT implemented yet. We rely on the `2000` limit in the backend query (`.to_list(2000)`).
+*   **Solution (Future):** Implement `react-window` or infinite scroll.
+
+## 15.2 "The Offline Selection"
+*   **Issue:** Client loses internet while selecting.
+*   **Solution:** Optimistic updates handle brief outages. Persistent offline storage (PWA) is on the roadmap.
+
+## 15.3 "Race Conditions"
+*   **Issue:** Photographer deletes a photo while Client is selecting it.
+*   **Solution:** Backend checks `findById` before update. Frontend handles 404 gracefully.
+
+---
+
+# 16. GLOSSARY
+
+*   **Raw:** The original JPEG uploaded by the photographer.
+*   **Edit:** The processed JPEG uploaded later, linked to a Raw.
+*   **Selection:** A boolean flag on a Photo entity.
+*   **Sub-Event:** A logical grouping within an Event (e.g., "Reception").
+*   **Magic Link:** A URL that usually auto-logs a user in (Simulated via Copy Invite).
+*   **AI Pick:** A photo scored highly by the Quality Analysis model.
+

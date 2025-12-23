@@ -19,6 +19,7 @@ interface DataContextType {
   updateUser: (user: User) => Promise<void>;
   addEvent: (event: Partial<Event> & { initialClients?: any[] }) => Promise<void>;
   updateEvent: (eventId: string, updates: Partial<Event>) => Promise<void>;
+  deleteEvent: (eventId: string) => Promise<void>;
   updateEventWorkflow: (eventId: string, status: SelectionStatus, deliveryDate?: string) => Promise<void>;
   deletePhoto: (photoId: string) => Promise<void>;
   togglePhotoSelection: (photoId: string) => Promise<void>;
@@ -37,6 +38,7 @@ interface DataContextType {
   toggleUserStatus: (userId: string) => Promise<void>;
   refreshPhotos: (eventId: string) => Promise<void>;
   downloadPhoto: (url: string, filename?: string) => void;
+  recordPayment: (eventId: string, amount: number, date: string, method: string, note: string) => Promise<void>;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -230,6 +232,14 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       } catch (e) { console.error(e); }
   };
 
+  const deleteEvent = async (eventId: string) => {
+      try {
+          await fetch(`${API_URL}/events/${eventId}`, { method: 'DELETE' });
+          setEvents(events.filter(e => e.id !== eventId));
+          if(activeEvent?.id === eventId) setActiveEvent(null);
+      } catch (e) { console.error(e); }
+  }
+
   const updateEventWorkflow = async (eventId: string, status: SelectionStatus, deliveryDate?: string) => {
       const updates: any = { selectionStatus: status };
       if (deliveryDate) {
@@ -338,8 +348,57 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const uploadBulkEditedPhotos = async (eventId: string, files: FileList) => {
-      // Logic would be similar: upload files, match with existing originals by filename, update record.
-      alert(`Bulk edit upload not fully implemented yet. Use 'Upload Raw' for now.`);
+      try {
+          const fileArray = Array.from(files);
+          // 1. Upload files physically
+          const uploadedFiles = await Promise.all(fileArray.map(f => uploadEventPhoto(eventId, f)));
+
+          let matchedCount = 0;
+
+          // 2. Match and Update
+          // Use more robust matching regex that handles case insensitivity and multiple extension types
+          const cleanName = (name: string) => name.split('.').slice(0, -1).join('.').replace(/[-_ ](edit|final|copy|v\d+)/i, '').trim().toLowerCase();
+
+          const updatePromises = uploadedFiles.map(async (fileData) => {
+              const uploadedClean = cleanName(fileData.originalFilename);
+
+              // Find match in current photo list
+              const match = photos.find(p => {
+                  if (!p.originalFilename) return false;
+                  return cleanName(p.originalFilename) === uploadedClean;
+              });
+              
+              if (match) {
+                  matchedCount++;
+                  // Update the photo record with the new editedUrl AND reset review status
+                  await fetch(`${API_URL}/photos/${match.id}`, {
+                      method: 'PUT',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ 
+                          editedUrl: fileData.url, 
+                          reviewStatus: 'pending' // Important: Reset workflow on new upload
+                      })
+                  });
+              }
+          });
+
+          await Promise.all(updatePromises);
+          
+          if (matchedCount > 0) {
+              await loadPhotos(eventId);
+              // Also auto-advance workflow to 'review' if appropriate
+              if (activeEvent?.selectionStatus === 'editing') {
+                  updateEventWorkflow(eventId, 'review');
+              }
+              alert(`Success! Linked ${matchedCount} edits to original photos. Workflow set to Review.`);
+          } else {
+              alert("Uploaded files but could not automatically match them to existing photos. Ensure filenames are similar (e.g. IMG_1234.jpg and IMG_1234-Edit.jpg).");
+          }
+
+      } catch (e) { 
+          console.error("Bulk edit upload failed", e); 
+          alert("Upload failed. Please check server connection.");
+      }
   };
 
   const resetDatabase = async () => {
@@ -365,11 +424,22 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const updatePhotoReviewStatus = async (photoId: string, status: 'approved' | 'changes_requested' | 'pending') => {
-      setPhotos(photos.map(p => p.id === photoId ? { ...p, reviewStatus: status } : p));
+      try {
+          await fetch(`${API_URL}/photos/${photoId}`, {
+              method: 'PUT',
+              headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify({ reviewStatus: status })
+          });
+          setPhotos(photos.map(p => p.id === photoId ? { ...p, reviewStatus: status } : p));
+      } catch (e) {
+          console.error(e);
+      }
   };
 
   const approveAllEdits = async (eventId: string) => {
-      setPhotos(photos.map(p => p.eventId === eventId && p.editedUrl ? { ...p, reviewStatus: 'approved' as const } : p));
+      // In a real app, do this via a bulk endpoint
+      const edited = photos.filter(p => p.editedUrl);
+      await Promise.all(edited.map(p => updatePhotoReviewStatus(p.id, 'approved')));
       await updateEventWorkflow(eventId, 'accepted');
   };
 
@@ -404,14 +474,31 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       document.body.removeChild(link);
   };
 
+  const recordPayment = async (eventId: string, amount: number, date: string, method: string, note: string) => {
+      try {
+          const res = await fetch(`${API_URL}/events/${eventId}/payment`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ amount, date, method, note })
+          });
+          if (res.ok) {
+              const updated = normalizeData(await res.json());
+              setEvents(events.map(e => e.id === eventId ? updated : e));
+              if (activeEvent?.id === eventId) setActiveEvent(updated);
+          } else {
+              alert("Failed to record payment");
+          }
+      } catch(e) { console.error(e); alert("Failed to record payment"); }
+  };
+
   return (
     <DataContext.Provider value={{
       currentUser, users, events, activeEvent, photos, selectedPhotos, isLoading, setActiveEvent,
-      login, signup, logout, updateUser, addEvent, updateEvent, updateEventWorkflow,
+      login, signup, logout, updateUser, addEvent, updateEvent, deleteEvent, updateEventWorkflow,
       deletePhoto, togglePhotoSelection, submitSelections, renamePersonInEvent,
       uploadAsset, uploadRawPhotos, uploadBulkEditedPhotos, resetDatabase,
       requestAddon, addPhotoComment, updatePhotoReviewStatus, approveAllEdits,
-      updateUserServices, updateUserPortfolio, toggleUserStatus, refreshPhotos, downloadPhoto
+      updateUserServices, updateUserPortfolio, toggleUserStatus, refreshPhotos, downloadPhoto, recordPayment
     }}>
       {children}
     </DataContext.Provider>

@@ -44,6 +44,14 @@ export interface AddonRequest {
   status: AddonStatus;
 }
 
+export interface PaymentRecord {
+  id: string;
+  date: string;
+  amount: number;
+  method: string;
+  note?: string;
+}
+
 export interface FamilyMember {
   id: string;
   name: string;
@@ -132,6 +140,7 @@ export interface Event {
   price?: number;
   paidAmount?: number;
   paymentStatus?: 'pending' | 'partial' | 'paid';
+  paymentHistory?: PaymentRecord[];
   deadline?: string;
   optimizationSetting?: OptimizationType;
   clientEmail?: string;

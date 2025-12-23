@@ -30,8 +30,23 @@ const UserSelections: React.FC = () => {
       }
   };
 
-  const handleBulkDownload = () => {
-      alert("Downloading High-Res ZIP... (Simulation)");
+  const handleBulkDownload = async () => {
+      if (!confirm("This will download all approved photos individually. Continue?")) return;
+      
+      const approvedPhotos = editedPhotos.filter(p => p.reviewStatus === 'approved' || isAccepted);
+      
+      // Sequential download loop to avoid browser blocking
+      for (const photo of approvedPhotos) {
+          const link = document.createElement('a');
+          link.href = photo.editedUrl || photo.url;
+          // Use original filename logic or fallback
+          link.download = `PhotoSort_Final_${photo.id.slice(-6)}.jpg`;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          // Small delay
+          await new Promise(resolve => setTimeout(resolve, 500));
+      }
   };
 
   return (
@@ -165,12 +180,13 @@ const UserSelections: React.FC = () => {
                 </div>
                 
                 <div className="flex items-center gap-3">
-                    {isAccepted && (
+                    {/* Always show download for accepted projects */}
+                    {(isAccepted || activeEvent.selectionStatus === 'review') && (
                         <button 
                             onClick={handleBulkDownload}
                             className="px-8 py-3.5 bg-slate-900 text-white font-bold rounded-2xl shadow-xl hover:bg-black transition-all flex items-center gap-2 active:scale-95"
                         >
-                            <Download className="w-4 h-4" /> Download All (ZIP)
+                            <Download className="w-4 h-4" /> Download Photos
                         </button>
                     )}
 

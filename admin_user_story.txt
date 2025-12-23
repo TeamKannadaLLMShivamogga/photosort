@@ -1,94 +1,121 @@
 
-# Super Admin User Stories & Functional Specifications
-**Actor:** Super Admin (Platform Owner)
-**Role:** Manage the SaaS platform, oversee revenue, govern users, and maintain system health.
+# Super Admin User Stories & UI Specifications
+**Actor:** Super Admin
+**Role:** Platform oversight, revenue tracking, and system configuration.
 
 ---
 
-## 1. Platform Intelligence & Analytics
+## 1. Page: Global Dashboard (Overview)
+**Goal:** Health check of the SaaS platform.
 
-### US-1.1: Global Dashboard
-**As a** Super Admin,
-**I want** a high-level command center showing critical platform metrics (Total Revenue, Storage Used, System Uptime),
-**So that** I can monitor the health and growth of the business at a glance.
-*   **Visual Detail (AdminDashboard.tsx):**
-    *   **Revenue Card:** Shows total earnings across all studios with a percentage growth indicator.
-    *   **Balance Card:** Shows "To be collected" amount (Platform Balance).
-    *   **Storage Card:** Visual progress bar of AWS S3/Cloud usage (e.g., "1.2TB / 5TB").
-    *   **Uptime Card:** Green status indicators for API and AI services.
-
-### US-1.2: Revenue Analytics Visualization
-**As a** Super Admin,
-**I want** an interactive area chart showing revenue trends over the last 6 months,
-**So that** I can identify seasonal peaks and growth patterns.
-*   **Visual Detail:** A large Recharts AreaChart with a gradient fill, tooltips on hover showing exact daily/monthly figures.
-
-### US-1.3: Top Performing Studios
-**As a** Super Admin,
-**I want** a leaderboard of the top-grossing photographer partners,
-**So that** I can identify key accounts for retention or upsell opportunities.
-*   **Visual Detail:** A list widget showing Studio Name, Tier (Pro/Studio), and Total Revenue generated.
-
----
-
-## 2. User Governance
-
-### US-2.1: User Directory & Search
-**As a** Super Admin,
-**I want** to browse a paginated list of all users (Photographers and Clients) and search by Name or Email,
-**So that** I can quickly locate specific accounts for support issues.
-*   **Visual Detail:** A table view with columns for Profile, Role, Join Date, Status, and Actions. Search bar at the top.
-
-### US-2.2: Account Suspension (Kill Switch)
-**As a** Super Admin,
-**I want** to toggle a user's status between "Active" and "Suspended",
-**So that** I can block access for non-payment or policy violations.
-*   **Visual Detail:** A toggle switch or button in the User table.
-*   **Behavior:** Suspended users cannot log in. Their data remains but access is revoked.
+### UI Components & Layout
+*   **Header:** "Analytics" + "Super Admin Console" subtitle.
+*   **Metric Cards (4):**
+    1.  **Platform Revenue:** 
+        *   Value: Total of all event prices (₹).
+        *   Detail: "+18.4% growth" (Green text with TrendingUp icon).
+        *   Visual: CreditCard icon watermark.
+    2.  **Platform Balance:**
+        *   Value: Outstanding payments (`price` - `paidAmount`).
+        *   Style: Dark Slate background, White text.
+        *   Detail: "To be collected" (Amber text).
+    3.  **Cloud Storage:**
+        *   Value: Calculated GB (Photos * 4.5MB).
+        *   Visual: Progress bar (Indigo) showing usage vs 2000GB limit.
+    4.  **Global Uptime:**
+        *   Value: "99.9%".
+        *   Visual: Green status dots.
+*   **Revenue Analytics Chart:**
+    *   **Component:** Area Chart (Recharts).
+    *   **Axes:** X = Month (Jan-Jun), Y = Revenue (₹).
+    *   **Style:** Indigo gradient fill, tooltip on hover.
+*   **Top Partners Sidebar:**
+    *   **Header:** "Top Partners".
+    *   **List Items:**
+        *   Avatar (Square).
+        *   Name + Tier (e.g., "Gold").
+        *   Revenue Value (Right aligned, bold).
+    *   **Interaction:** Hover highlights row.
 
 ---
 
-## 3. Global Event Oversight
+## 2. Page: Global Events
+**Goal:** Audit all projects.
 
-### US-3.1: Global Event Registry
-**As a** Super Admin,
-**I want** to see a master list of every event created on the platform, regardless of the photographer,
-**So that** I can audit usage and ensure no illegal content is hosted.
-*   **Visual Detail:** A table or card grid view. Filters for "Active", "Completed", and "Closed" events.
-
-### US-3.2: Event Inspection
-**As a** Super Admin,
-**I want** to click "View" on any event to see its details (Revenue, Photo Count, Photographer),
-**So that** I can investigate specific project metadata without editing it.
-
----
-
-## 4. Subscription & Billing Management
-
-### US-4.1: Subscription Tracking
-**As a** Super Admin,
-**I want** a dedicated view to see all Photographer subscriptions, their tiers (Free, Pro, Studio), and expiry dates,
-**So that** I can anticipate renewals and churn.
-*   **Visual Detail:** A table highlighting the "Subscription Tier" with color-coded badges (e.g., Gold for Studio, Silver for Pro).
-
-### US-4.2: Manual Plan Adjustment (Future Scope)
-**As a** Super Admin,
-**I want** to manually upgrade or downgrade a studio's plan,
-**So that** I can handle custom enterprise deals or fix billing errors.
+### UI Components & Layout
+*   **Filter Bar:**
+    *   **Search:** Input "Search all events...".
+    *   **Status Tabs:** All | Active | Completed.
+    *   **View Toggle:** Grid (Card) vs List (Table).
+*   **List View (Table):**
+    *   **Columns:** 
+        1.  **Project Name:** Cover Thumb + Name + Date.
+        2.  **Partner:** Name of the Photographer (looked up via `photographerId`).
+        3.  **Revenue:** Price (₹).
+        4.  **Actions:** "View" button (Indigo Pill).
+    *   **Interaction:** Clicking "View" sets Active Event and navigates to `PhotographerEventDetail` (Read-only mode).
+*   **Card View:**
+    *   Displays standard Event Cards.
+    *   **Overlay:** "Project Value" footer.
 
 ---
 
-## 5. System Configuration & Maintenance
+## 3. Page: User Governance
+**Goal:** Manage photographer and client accounts.
 
-### US-5.1: System Engine Config
-**As a** Super Admin,
-**I want** to toggle global system settings (e.g., "Auto Escalations", "Auto-Audit"),
-**So that** I can control automated platform behaviors without deploying code.
-*   **Visual Detail:** A settings panel with toggle switches and descriptions.
+### UI Components & Layout
+*   **Header Stats:** Card showing "Total Users" count.
+*   **Search Bar:** Filters table by Name or Email.
+*   **User Table:**
+    *   **Columns:**
+        1.  **User Profile:** Large Avatar + Name + Email.
+        2.  **Role:** Colored Badge (Purple=Admin, Indigo=Photographer, Gray=User).
+        3.  **Joined:** Formatted Date.
+        4.  **Status:** Pill (Green "ACTIVE" / Red "SUSPENDED").
+        5.  **Access:** Action Button.
+    *   **Action Button:**
+        *   If Active: Shows `ToggleRight` icon (Green). Clicking sends `PATCH` request to disable.
+        *   If Suspended: Shows `ToggleLeft` icon (Red). Clicking sends `PATCH` request to enable.
 
-### US-5.2: Danger Zone (Database Reset)
-**As a** Super Admin,
-**I want** a protected "Reset Database" button,
-**So that** I can wipe all demo data and reset the system to a clean state during development or testing.
-*   **Visual Detail:** A red-bordered section. Clicking triggers a confirmation modal with a warning icon.
-*   **Behavior:** Calls the API to drop collections and re-seed initial data.
+---
+
+## 4. Page: Subscriptions
+**Goal:** Track studio tiers.
+
+### UI Components & Layout
+*   **Filter:** Search by Studio Name.
+*   **Stats:** Card showing "ACTIVE STUDIOS" count.
+*   **Subscription Table:**
+    *   **Filter:** Shows only users with `role == 'PHOTOGRAPHER'`.
+    *   **Columns:**
+        1.  **Studio:** Avatar + Name + Email.
+        2.  **Tier:** Badge (Studio/Pro/Free).
+        3.  **Stats (E/P/U):** Compact pill showing Events/Photos/Users counts.
+        4.  **Subscription Till:** Expiry Date.
+        5.  **Status:** Enabled/Disabled.
+        6.  **Access:** Toggle Switch.
+
+---
+
+## 5. Page: System Settings
+**Goal:** Global config and database maintenance.
+
+### UI Components & Layout
+*   **Config Card (System Engine):**
+    *   **Items:** 
+        *   "Auto Escalations" (Checkbox).
+        *   "Auto-Audit" (Checkbox).
+    *   **Visual:** Toggle switches (Green when active).
+*   **Danger Zone Card:**
+    *   **Style:** Red-50 Background, Red Border.
+    *   **Content:**
+        *   Title: "Danger Zone" with Alert Triangle.
+        *   Warning Text: "Resetting the database will permanently delete all events..."
+    *   **Action:** "Reset Database" button (Solid Red).
+*   **Reset Confirmation Modal:**
+    *   **Trigger:** Clicking "Reset Database".
+    *   **UI:** 
+        *   Large Red Alert Icon.
+        *   "Confirm Reset?" title.
+        *   **Buttons:** "Cancel" (Gray), "Yes, Wipe Everything" (Red).
+    *   **Logic:** Calls `resetDatabase()` in context -> Clears LocalStorage -> Reloads window.

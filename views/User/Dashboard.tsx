@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { useData } from '../../context/DataContext';
-import { Clock, Image as ImageIcon, Wallet, CheckCircle, AlertCircle, ArrowRight } from 'lucide-react';
+import { Clock, Image as ImageIcon, Wallet, CheckCircle, AlertCircle, ArrowRight, Eye, RefreshCw } from 'lucide-react';
 import EventSelector from './EventSelector';
 
 interface UserDashboardProps {
@@ -38,6 +38,7 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ onNavigate }) => {
   };
 
   const selectedCount = eventPhotos.filter(p => p.isSelected).length;
+  const reviewPendingCount = eventPhotos.filter(p => p.reviewStatus === 'pending' && p.editedUrl).length;
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500 max-w-7xl mx-auto pb-20">
@@ -72,6 +73,27 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ onNavigate }) => {
              )}
         </div>
       </div>
+
+      {/* Critical Action Card - Only shows when review is needed */}
+      {(activeEvent.selectionStatus === 'review' || reviewPendingCount > 0) && (
+          <div className="bg-gradient-to-r from-pink-500 to-rose-500 p-6 rounded-[2rem] shadow-xl text-white flex items-center justify-between animate-in slide-in-from-top-4">
+              <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 bg-white/20 backdrop-blur rounded-2xl flex items-center justify-center">
+                      <Eye className="w-6 h-6 text-white" />
+                  </div>
+                  <div>
+                      <h3 className="font-black text-lg uppercase tracking-tight">Edits Ready for Review</h3>
+                      <p className="text-white/80 text-sm font-medium">{reviewPendingCount} photos waiting for your approval.</p>
+                  </div>
+              </div>
+              <button 
+                onClick={() => onNavigate('selections')}
+                className="px-6 py-3 bg-white text-rose-600 font-bold rounded-xl shadow-lg hover:bg-rose-50 transition-colors uppercase tracking-widest text-xs"
+              >
+                  Review Now
+              </button>
+          </div>
+      )}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm flex items-center gap-4">
@@ -138,9 +160,15 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ onNavigate }) => {
                        <h3 className="text-xl font-black uppercase tracking-tight">Need Help?</h3>
                        <p className="text-slate-400 text-sm font-medium mt-1">Contact your photographer for any queries regarding selection or payments.</p>
                    </div>
-                   <button className="py-3 px-6 bg-white text-slate-900 rounded-xl font-black uppercase tracking-widest text-xs hover:bg-slate-100 transition-colors">
-                       Contact Studio
-                   </button>
+                   {activeEvent.clientEmail ? (
+                       <a href={`mailto:${activeEvent.clientEmail}`} className="inline-block py-3 px-6 bg-white text-slate-900 rounded-xl font-black uppercase tracking-widest text-xs hover:bg-slate-100 transition-colors">
+                           Contact Studio via Email
+                       </a>
+                   ) : (
+                       <button className="py-3 px-6 bg-white text-slate-900 rounded-xl font-black uppercase tracking-widest text-xs hover:bg-slate-100 transition-colors">
+                           Contact Studio
+                       </button>
+                   )}
                </div>
                <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/20 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2"></div>
           </div>
