@@ -94,13 +94,13 @@ cleanup() {
 
 trap cleanup SIGINT SIGTERM
 
-# Start Master Backend (Port 8000)
+# Start Master Backend (Port 8010)
 echo "Starting Master Backend API..."
-conda run --no-capture-output -n "$ENV_NAME" python -m uvicorn python_backend.main:app --host 0.0.0.0 --port 8000 --reload &
+conda run --no-capture-output -n "$ENV_NAME" python -m uvicorn python_backend.main:app --host 0.0.0.0 --port 8010 --reload &
 
-# Start AI Service (Port 8001)
+# Start AI Service (Port 8011)
 echo "Starting AI Microservice..."
-conda run --no-capture-output -n "$ENV_NAME" python -m uvicorn python_backend.gen_ai_main:app --host 0.0.0.0 --port 8001 --reload &
+conda run --no-capture-output -n "$ENV_NAME" python -m uvicorn python_backend.gen_ai_main:app --host 0.0.0.0 --port 8011 --reload &
 
 # Start Frontend (Vite)
 echo "Starting React Frontend..."

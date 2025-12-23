@@ -22,7 +22,8 @@ load_dotenv()
 # --- Database & Config ---
 MONGO_URL = os.getenv("MONGODB_URL", "mongodb://localhost:27017")
 DB_NAME = "photosort"
-AI_SERVICE_URL = os.getenv("AI_SERVICE_URL", "http://localhost:8001")
+# Updated AI Service Port to 8011
+AI_SERVICE_URL = os.getenv("AI_SERVICE_URL", "http://localhost:8011")
 UPLOAD_DIR = "uploads"
 
 client = AsyncIOMotorClient(MONGO_URL)
@@ -515,4 +516,5 @@ async def delete_photo(id: str):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    # Updated Port to 8010
+    uvicorn.run(app, host="0.0.0.0", port=8010)

@@ -1,3 +1,4 @@
+
 import express from 'express';
 import mongoose from 'mongoose';
 import cors from 'cors';
@@ -8,8 +9,10 @@ import { seedDatabase } from './seed.js';
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 8000;
-const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8001';
+// Updated Port to 8010
+const PORT = process.env.PORT || 8010;
+// Updated AI Service Port to 8011
+const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8011';
 
 // Middleware
 app.use(cors());
