@@ -2,7 +2,7 @@
 import os
 import cv2
 import numpy as np
-import face_recognition
+from deepface import DeepFace
 import chromadb
 from chromadb.config import Settings
 import uuid
@@ -36,68 +36,74 @@ class FaceService:
             print(f"Image not found: {full_path}")
             return [], False
 
-        # Load image
-        # Using face_recognition load_image_file handles rotation metadata correctly usually
         try:
-            image = face_recognition.load_image_file(full_path)
+            # DeepFace.represent returns a list of dictionaries
+            # Each dict: {'embedding': [...], 'facial_area': {'x':, 'y':, 'w':, 'h':}, 'face_confidence': ...}
+            # We use "Facenet512" for high accuracy embeddings (512 dimensions)
+            # We use "opencv" detector for speed and CPU compatibility (no dlib required)
+            # enforce_detection=True skips images with no faces (raises ValueError)
+            faces = DeepFace.represent(
+                img_path=full_path, 
+                model_name="Facenet512", 
+                detector_backend="opencv", 
+                enforce_detection=True,
+                align=True
+            )
+        except ValueError:
+            # No face detected
+            return [], False
         except Exception as e:
-            print(f"Error loading image {full_path}: {e}")
+            print(f"DeepFace processing error: {e}")
             return [], False
-
-        # Detect Faces
-        # Use CNN model if CUDA is available (requires dlib cuda support), else HOG
-        # For this implementation, we default to 'hog' for CPU compatibility as standard dlib pip install is CPU only.
-        # If GPU dlib is installed, change to 'cnn'
-        model = "hog" 
-        face_locations = face_recognition.face_locations(image, model=model)
-        
-        if not face_locations:
-            return [], False
-
-        # Generate Encodings
-        face_encodings = face_recognition.face_encodings(image, face_locations)
 
         collection = self.get_collection(event_id)
         identified_people = []
         high_quality = False
 
-        # Process each face
-        for (top, right, bottom, left), encoding in zip(face_locations, face_encodings):
-            
-            # Check Face Quality (Simple heuristic: Size)
-            face_height = bottom - top
-            if face_height > 100: # Pixel height threshold
+        # Process each face found
+        for face_obj in faces:
+            embedding = face_obj['embedding']
+            area = face_obj['facial_area']
+            confidence = face_obj.get('face_confidence', 0)
+
+            # Basic quality check based on resolution
+            if area['w'] > 80 and area['h'] > 80:
                 high_quality = True
 
             # Query Vector DB
             # ChromaDB expects list of lists for embeddings
             results = collection.query(
-                query_embeddings=[encoding.tolist()],
+                query_embeddings=[embedding],
                 n_results=1
             )
 
             person_name = None
             
-            # Check distance threshold (0.6 is typical for dlib face recognition)
+            # Check distance threshold (Cosine distance)
+            # For Facenet512, a threshold around 0.4 - 0.5 is usually good for DeepFace
             if results['ids'] and results['ids'][0] and results['distances'] and results['distances'][0]:
                 distance = results['distances'][0][0]
-                if distance < 0.5: # Stricter threshold for clustering
+                if distance < 0.4: # Match threshold
                     person_name = results['metadatas'][0][0]['name']
 
             # If new person
             if not person_name:
                 person_id = str(uuid.uuid4())
-                # Generate a friendly name e.g. "Person 1", "Person 2"
                 existing_count = collection.count()
                 person_name = f"Person {existing_count + 1}"
                 
-                # Save Thumbnail
-                thumb_url = self._save_face_thumbnail(image, (top, right, bottom, left), event_id, person_name)
+                # Save Thumbnail (Needs original image to crop)
+                # Load image with PIL to crop, safer than cv2 for file operations
+                try:
+                    thumb_url = self._save_face_thumbnail(full_path, area, event_id, person_name)
+                except Exception as e:
+                    print(f"Thumbnail save failed: {e}")
+                    thumb_url = ""
                 
                 # Add to Vector DB
                 collection.add(
-                    documents=[person_name], # Optional document text
-                    embeddings=[encoding.tolist()],
+                    documents=[person_name],
+                    embeddings=[embedding],
                     metadatas=[{"name": person_name, "thumbnail": thumb_url}],
                     ids=[person_id]
                 )
@@ -106,42 +112,40 @@ class FaceService:
 
         return list(set(identified_people)), high_quality
 
-    def _save_face_thumbnail(self, image_array, location, event_id, person_name):
-        """Crops face and saves to disk."""
-        top, right, bottom, left = location
+    def _save_face_thumbnail(self, image_full_path, area, event_id, person_name):
+        """Crops face and saves to disk using DeepFace coordinates."""
+        x, y, w, h = area['x'], area['y'], area['w'], area['h']
         
-        # Add padding
-        height, width, _ = image_array.shape
-        pad_h = int((bottom - top) * 0.2)
-        pad_w = int((right - left) * 0.2)
-        
-        t = max(0, top - pad_h)
-        b = min(height, bottom + pad_h)
-        l = max(0, left - pad_w)
-        r = min(width, right + pad_w)
-        
-        face_image = image_array[t:b, l:r]
-        
-        # Convert to PIL for saving
-        pil_image = Image.fromarray(face_image)
-        
-        # Directory
-        event_face_dir = os.path.join(self.faces_dir, event_id)
-        os.makedirs(event_face_dir, exist_ok=True)
-        
-        # Sanitize filename
-        safe_name = "".join([c for c in person_name if c.isalnum() or c in (' ', '-', '_')]).strip()
-        filename = f"{safe_name}.jpg"
-        save_path = os.path.join(event_face_dir, filename)
-        
-        pil_image.save(save_path)
-        
-        return f"/uploads/faces/{event_id}/{filename}"
+        with Image.open(image_full_path) as img:
+            width, height = img.size
+            
+            # Add padding (20%)
+            pad_w = int(w * 0.2)
+            pad_h = int(h * 0.2)
+            
+            left = max(0, x - pad_w)
+            top = max(0, y - pad_h)
+            right = min(width, x + w + pad_w)
+            bottom = min(height, y + h + pad_h)
+            
+            face_crop = img.crop((left, top, right, bottom))
+            
+            # Directory
+            event_face_dir = os.path.join(self.faces_dir, event_id)
+            os.makedirs(event_face_dir, exist_ok=True)
+            
+            # Sanitize filename
+            safe_name = "".join([c for c in person_name if c.isalnum() or c in (' ', '-', '_')]).strip()
+            filename = f"{safe_name}.jpg"
+            save_path = os.path.join(event_face_dir, filename)
+            
+            face_crop.save(save_path)
+            
+            return f"/uploads/faces/{event_id}/{filename}"
 
     def get_event_faces(self, event_id: str) -> Dict[str, str]:
         """Retrieve all known faces (Name -> Thumbnail) for an event from ChromaDB metadata."""
         collection = self.get_collection(event_id)
-        # Get all items
         if collection.count() == 0:
             return {}
             
