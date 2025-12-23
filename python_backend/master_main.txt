@@ -244,7 +244,7 @@ async def trigger_ai_service(event_id: str):
 
 @app.get("/")
 def read_root():
-    return {"status": "Master Backend Online", "docs": "/docs"}
+    return {"status": "Master Backend Online (Port 8010)", "docs": "/docs"}
 
 # --- Auth ---
 
